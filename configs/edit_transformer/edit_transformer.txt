@@ -1,0 +1,14 @@
+dataset {
+    train_path = "/data/datasets/yelp/train_preprocessed_free_set_True.tsv"
+    test_path = "/data/datasets/yelp/test_preprocessed_free_set_True.tsv"
+    valid_path = "/data/datasets/yelp/valid_preprocessed_free_set_True.tsv"
+}
+
+vocab {
+    max_size = 20000
+    vector_name = "glove.42B.300d"
+}
+
+training {
+    batch_size = 128
+}
