@@ -24,3 +24,7 @@ training {
         }
     }
 }
+
+optimizer {
+    lr = 1e-3
+}

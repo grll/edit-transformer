@@ -36,6 +36,7 @@ def main(config: Config, logger: Logger, device: torch.device) -> None:
                 'training.eval.small.limit (int)': maximum number of batch on which to run the small evaluation.
                 'training.eval.big.threshold (int)': iteration threshold at which big eval are performed.
                 'training.eval.big.limit (int)': maximum number of batch on which to run the big evaluation.
+                'optimizer.lr (float)': learning rate to use.
             }
         logger (Logger): the logger to use in the main function.
         device (torch.device): the torch device on which to run the training (cpu or gpu)
@@ -77,7 +78,7 @@ def main(config: Config, logger: Logger, device: torch.device) -> None:
     # 2. Model, optimizer, loss function initialization
     embedding = nn.Embedding.from_pretrained(field.vocab.vectors, freeze=True)
     edit_transformer = make_model(embedding)
-    optimizer = Adam(edit_transformer.parameters())
+    optimizer = Adam(edit_transformer.parameters(), lr=config.training.lr)
 
     # 3. Training loop.
     edit_transformer.train()
