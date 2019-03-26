@@ -8,16 +8,18 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from dependencies.text.torchtext.data.field import Field
 from dependencies.text.torchtext.data.dataset import TabularDataset
+from tensorboardX import SummaryWriter
 
 from dependencies import data
 from dependencies.config import Config
 from dependencies.logger import setup_logging
+from dependencies.workspace import IntegerDirectories
 from edit_transformer.model import make_model
 from edit_transformer.iterator import create_iterators
 from edit_transformer.evaluation import evaluate_model
 
 
-def main(config: Config, logger: Logger, device: torch.device) -> None:
+def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torch.device) -> None:
     """ Train an 'edit-transformer' model with the provided config.
 
     Args:
@@ -39,7 +41,8 @@ def main(config: Config, logger: Logger, device: torch.device) -> None:
                 'optimizer.lr (float)': learning rate to use.
             }
         logger (Logger): the logger to use in the main function.
-        device (torch.device): the torch device on which to run the training (cpu or gpu)
+        tb_writter (SummaryWriter): tensorboardX writter with path already configured.
+        device (torch.device): the torch device on which to run the training (cpu or gpu).
 
     """
     # 1. Data Processing
@@ -78,7 +81,7 @@ def main(config: Config, logger: Logger, device: torch.device) -> None:
     # 2. Model, optimizer, loss function initialization
     embedding = nn.Embedding.from_pretrained(field.vocab.vectors, freeze=True)
     edit_transformer = make_model(embedding)
-    optimizer = Adam(edit_transformer.parameters(), lr=config.training.lr)
+    optimizer = Adam(edit_transformer.parameters(), lr=config.optimizer.lr)
 
     # 3. Training loop.
     edit_transformer.train()
@@ -97,24 +100,35 @@ def main(config: Config, logger: Logger, device: torch.device) -> None:
 
         if train_iterator.iterator.iterations % config.training.eval.small.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.small.limit,
-                           field.vocab, "small", logger)
+                           field.vocab, "small", train_iterator.iterator.iterations, logger, tb_writter)
 
         if train_iterator.iterator.iterations % config.training.eval.big.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.big.limit,
-                           field.vocab, "big", logger)
+                           field.vocab, "big", train_iterator.iterator.iterations,  logger, tb_writter)
 
         if train_iterator.iterator.iterations == config.training.num_iter:
             break
 
 
 if __name__ == "__main__":
+    # 0. Create folder for the training run
+    integer_directories = IntegerDirectories(data.data_workspace.training_runs)
+    directory_path = integer_directories.new_dir()
+
     # 1. logging
-    setup_logging()
+    # - Standard Logger
+    setup_logging(env_variable_name="BLABLA",root=directory_path, noname=True)
     logger_ = getLogger(__name__)
+    # - Tensorboard Logger
+    tb_writter_ = SummaryWriter(directory_path)
+
     # 2. config
     config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "edit_transformer.txt"))
+    config_.to_file(join(directory_path, "config.txt"))
     logger_.info("Config:\n{}".format(config_.to_str()))
+
     # 3. device
     device_ = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     # 4. run the training
-    main(config_, logger_, device_)
+    main(config_, logger_, tb_writter_, device_)

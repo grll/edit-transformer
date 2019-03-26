@@ -1,5 +1,6 @@
 import os
 from os.path import join
+from collections import Mapping, OrderedDict
 import mimetypes
 mimetypes.init()  # see Workspace
 
@@ -83,3 +84,85 @@ class Workspace(object):
 
     def add_file(self, name, relative_path):
         self._add(name, relative_path)
+
+
+def sub_dirs(root_dir):
+    """Return a list of all sub-directory paths.
+
+    Example:
+        >> root_dir = '/Users/Kelvin/data'
+        >> sub_dirs(root_dir)
+        ['/Users/Kelvin/data/a', '/Users/Kelvin/data/b']
+    """
+    dir_paths = []
+    for path in os.listdir(root_dir):
+        full_path = join(root_dir, path)
+        if os.path.isdir(full_path):
+            dir_paths.append(full_path)
+    return dir_paths
+
+
+class IntegerDirectories(Mapping):
+    """Keep track of directories with names of the form "{integer}_{something}" or just "{integer}"."""
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+        makedirs(root_dir)
+
+    @property
+    def _ints_to_paths(self):
+        ints_to_paths = {}
+        for p in sub_dirs(self.root_dir):
+            name = os.path.basename(p)
+            try:
+                i = int(name.split('_')[0])
+                if i in ints_to_paths:
+                    raise IOError("Multiple directories with the same integer prefix: {} and {}".format(
+                        ints_to_paths[i], p))
+                ints_to_paths[i] = p
+            except ValueError:
+                # the first element was not an integer
+                pass
+
+        # put into an ordered dict
+        ordered = OrderedDict()
+        for i in sorted(ints_to_paths):
+            ordered[i] = ints_to_paths[i]
+        return ordered
+
+    def __len__(self):
+        return len(self._ints_to_paths)
+
+    @property
+    def largest_int(self):
+        """Largest int among the integer directories."""
+        if len(self._ints_to_paths) == 0:
+            return None
+        return max(self._ints_to_paths)
+
+    def new_dir(self, name=None):
+        """Create a new directory and return its path."""
+        if self.largest_int is None:
+            idx = 0
+        else:
+            idx = self.largest_int + 1
+
+        path = join(self.root_dir, str(idx))
+
+        if name:
+            path = '{}_{}'.format(path, name)  # add name as suffix
+
+        makedirs(path)
+        return path
+
+    def __getitem__(self, i):
+        """Get the path to directory i.
+
+        Raises:
+            KeyError, if directory does not exist.
+        """
+        if i not in self._ints_to_paths:
+            raise KeyError("Directory #{} not found".format(i))
+        return self._ints_to_paths[i]
+
+    def __iter__(self):
+        return iter(self._ints_to_paths)

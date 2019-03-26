@@ -15,7 +15,7 @@ workspace = data_workspace  # for reference in third_party textmorph implementat
 data_workspace.add_dir('datasets', 'datasets')
 
 # Training runs
-data_workspace.add_dir('edit_runs', 'training_runs')
+data_workspace.add_dir('training_runs', 'training_runs')
 
 # Logs App level
 data_workspace.add_dir('logs', 'logs')

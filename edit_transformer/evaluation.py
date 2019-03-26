@@ -3,6 +3,7 @@ from logging import Logger
 
 import torch.nn.functional as F
 from dependencies.text.torchtext.vocab import Vocab
+from tensorboardX import SummaryWriter
 
 from edit_transformer.model import EditTransformer
 from edit_transformer.iterator import IteratorWrapper
@@ -39,7 +40,7 @@ def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int,
 
 
 def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test_iterator: IteratorWrapper, limit: int,
-                   vocab: Vocab, label: str, logger: Logger):
+                   vocab: Vocab, label: str, iteration: int, logger: Logger, tb_writter: SummaryWriter):
     """Evaluate a model over train and test iterator for a certain amount of batches.
 
     Args:
@@ -49,9 +50,9 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
         limit (int): limit the number of batches to evaluate in each iterators.
         vocab (Vocab): a vocab object used to ignore padding and to compute bleue_score.
         label (str): a label used for logging purpose.
+        iteration (int): current training iteration being evaluated.
         logger (Logger): logger to use to log the results.
-
-    Returns:
+        tb_writter (SummaryWriter): tensorboard X summary writter with path already configured.
 
     """
     model.eval()
@@ -63,6 +64,10 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
     model.train()
 
     # logging
+    logger.info("ITER #{}".format(iteration))
     logger.info("{}_train_loss: {}".format(label, train_loss))
     logger.info("{}_test_loss: {}".format(label, test_loss))
 
+    # tb_logging
+    tb_writter.add_scalar("{}_train_loss".format(label), train_loss, iteration)
+    tb_writter.add_scalar("{}_test_loss".format(label), test_loss, iteration)
