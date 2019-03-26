@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     # 1. logging
     # - Standard Logger
-    setup_logging(env_variable_name="BLABLA",root=directory_path, noname=True)
+    setup_logging(root=directory_path, noname=True)
     logger_ = getLogger(__name__)
     # - Tensorboard Logger
     tb_writter_ = SummaryWriter(directory_path)

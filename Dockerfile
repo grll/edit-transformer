@@ -65,3 +65,12 @@ RUN groupadd -f -g $GID $UNAME
 RUN useradd -m -u $UID -g $GID -s /bin/bash $UNAME
 RUN chown $UNAME /code
 USER $UNAME
+
+# === USEFUL DOCKER COMMAND ===
+# BUILD
+# docker build --build-arg UNAME=$(whoami) --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t edit-transformer:0.0.2 .
+# RUN INTERACTIVE MODE
+# docker run -it --rm -v $(pwd):/code -v $(pwd)/../new-data-augmentation-data:/data -e INTERACTIVE_ENVIRONMENT=True edit-transformer:0.0.2 /bin/bash
+# RUN TRAINING BACKGROUND MODE
+# docker run -d --rm -v $(pwd):/code -v $(pwd)/../edit-transformer-data:/data edit-transformer:0.0.2 python3.7 -u edit_transformer/preprocess.py
+
