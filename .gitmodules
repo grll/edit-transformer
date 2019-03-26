@@ -1,0 +1,3 @@
+[submodule "dependencies/text"]
+	path = dependencies/text
+	url = git@github.com:pytorch/text.git

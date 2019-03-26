@@ -46,8 +46,8 @@ class DecoderLayer(nn.Module):
         Args:
             x (Tensor): decoder input tensor of shape `(batch, tgt_seq_len + 1, word_dim)`.
             memory (Tensor): memory / encoding of the source sequence tensor of shape `(batch, src_seq_len, d_model)`.
-            src_mask (Tensor): mask of the source sequences of shape `(batch, src_seq_len, 1)`.
-            tgt_mask (Tensor): triangular mask over the target sequence `(batch, tgt_seq_len + 1, 1)`.
+            src_mask (Tensor): mask of the source sequences of shape `(batch, src_seq_len)`.
+            tgt_mask (Tensor): triangular mask over the target sequence `(batch, tgt_seq_len + 1)`.
             edit_embed (Tensor): edition embedding tensor for each sequence of shape `(batch, d_edit)`.
 
         Returns:
@@ -97,10 +97,10 @@ class Decoder(nn.Module):
         """Forward through the decoder.
 
         Args:
-            x (Tensor): decoder input tensor of shape `(batch, tgt_seq_len + 1, 1)`.
+            x (Tensor): decoder input tensor of shape `(batch, tgt_seq_len + 1)`.
             memory (Tensor): memory / encoding of the source sequence tensor of shape `(batch, src_seq_len, d_model)`.
-            src_mask (Tensor): mask of the source sequences of shape `(batch, src_seq_len, 1)`.
-            tgt_mask (Tensor): triangular mask over the target sequence `(batch, tgt_seq_len, 1)`.
+            src_mask (Tensor): mask of the source sequences of shape `(batch, src_seq_len)`.
+            tgt_mask (Tensor): triangular mask over the target sequence `(batch, tgt_seq_len)`.
             edit_embed (Tensor): edition embedding tensor for each sequence of shape `(batch, d_edit)`.
 
         Returns:
@@ -120,7 +120,7 @@ class Decoder(nn.Module):
 
 
 class Generator(nn.Module):
-    """Generate a probability over the vocabulary for each timestep.
+    """Generates logits over the vocabulary for each timestep.
 
     Attributes:
         vocab_projection_pos (nn.Linear): linear projection from model output to the word embedding dimension.
@@ -137,7 +137,7 @@ class Generator(nn.Module):
 
         """
         super(Generator, self).__init__()
-        word_dim = word_embeddings.shape[-1]
+        word_dim = word_embeddings.weight.shape[-1]
         self.vocab_projection_pos = nn.Linear(d_model, word_dim)
         self.vocab_projection_neg = nn.Linear(d_model, word_dim)
         self.word_embeddings = word_embeddings
@@ -149,7 +149,7 @@ class Generator(nn.Module):
             z (Tensor): output tensor of the decoder of shape `(batch, tgt_seq_len, d_model)`.
 
         Returns:
-            Tensor: output probability of the generator tensor of shape `(batch, tgt_seq_len, d_vocab)`.
+            Tensor: output logits generated tensor of shape `(batch, tgt_seq_len, vocab_size)`.
 
         """
         batch_size, tgt_seq_len, _ = z.shape
@@ -160,4 +160,4 @@ class Generator(nn.Module):
         vocab_logit_pos = F.relu(torch.matmul(vocab_query_pos, self.word_embeddings.weight.t()))
         vocab_logit_neg = F.relu(torch.matmul(vocab_query_neg, self.word_embeddings.weight.t()))
 
-        return F.softmax(vocab_logit_pos - vocab_logit_neg, dim=-1)
+        return vocab_logit_pos - vocab_logit_neg

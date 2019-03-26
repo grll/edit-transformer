@@ -26,20 +26,24 @@ class EditEncoder(nn.Module):
             norm_eps (float): epsilon used to sample the random noise added to the norm of the edit_vector
 
         """
+        super().__init__()
         self.embedding = embedding
-        word_dim = embedding.shape[-1]
+        word_dim = embedding.weight.shape[-1]
         self.linear_prenoise = nn.Linear(word_dim, edit_dim // 2, bias=False)
         self.norm_max = norm_max
         self.noise_scaler = kappa_init
         self.norm_eps = norm_eps
         self.normclip = nn.Hardtanh(0, self.norm_max - norm_eps)
 
-    def forward(self, insert: Tensor, delete: Tensor, draw_samples: bool = True, draw_p: bool = False) -> Tensor:
+    def forward(self, insert: Tensor, insert_mask: Tensor, delete: Tensor, delete_mask: Tensor,
+                draw_samples: bool = True, draw_p: bool = False) -> Tensor:
         """Forward through the edit encoder.
 
         Args:
-            insert (Tensor): tensor of insertions of shape `(batch, insert_seq_len, 1)`.
-            delete (Tensor): tensor of deletions of shape `(batch, delete_seq_len, 1)`.
+            insert (Tensor): tensor of insertions of shape `(batch, insert_seq_len)`.
+            insert_mask (Tensor): mask over tensor of insertions of shape `(batch, insert_seq_len)`.
+            delete (Tensor): tensor of deletions of shape `(batch, delete_seq_len)`.
+            delete_mask (Tensor): mask over tensor of deletions of shape `(batch, delete_seq_len)`.
             draw_samples (bool): Weather to draw samples VAE style or not (keep True for training).
             draw_p (bool): Edit vector drawn from random prior distribution (keep False for training).
 
@@ -50,8 +54,8 @@ class EditEncoder(nn.Module):
         insert_embed = self.embedding(insert)
         delete_embed = self.embedding(delete)
 
-        insert_embed.sum_(dim=-2)
-        delete_embed.sum_(dim=-2)
+        insert_embed = insert_embed.masked_fill_(insert_mask.unsqueeze(-1) == 0, 0).sum(dim=-2)
+        delete_embed = delete_embed.masked_fill_(delete_mask.unsqueeze(-1) == 0, 0).sum(dim=-2)
 
         insert_set = self.linear_prenoise(insert_embed)
         delete_set = self.linear_prenoise(delete_embed)
@@ -74,7 +78,7 @@ class EditEncoder(nn.Module):
             edit_dim (float): dimension of the vector to sample.
 
         Returns:
-            Tensor: sampled tensor matrice of shape `(batch, edit_dim)`.
+            Tensor: sampled tensor matrix of shape `(batch, edit_dim)`.
 
         """
         rand_draw = torch.randn(batch_size, edit_dim, device=device)

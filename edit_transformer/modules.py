@@ -255,7 +255,7 @@ class MultiHeadedAttention(nn.Module):
                 `(batch, seq_len, d_model + d_edit)` if "edit-attention".
             value (Tensor): tensor from which to project the value of shape `(batch, seq_len, d_model)`or
                 `(batch, seq_len, d_model + d_edit)` if "edit-attention".
-            mask (Optional[Tensor]): an optional mask tensor of shape `(batch, seq_len, 1)` or
+            mask (Optional[Tensor]): an optional mask tensor of shape `(batch, seq_len)` or
                 `(batch, seq_len, seq_len)` used in the decoder to hide part of the sequence.
 
         Returns:
@@ -264,9 +264,8 @@ class MultiHeadedAttention(nn.Module):
 
         """
         if mask is not None:
-            # transpose the mask to have good weighted value after the softmax.
-            if mask.shape[-1] == 1:
-                mask = mask.transpose(1, 2)
+            if len(mask.shape) == 2:
+                mask = mask.unsqueeze(1)  # mask format for  good weighted value after the softmax.
 
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)

@@ -30,18 +30,20 @@ class EditTransformer(nn.Module):
         self.decoder = decoder
         self.generator = generator
 
-    def forward(self, src: Tensor, src_mask: Tensor, tgt: Tensor, tgt_mask: Tensor, insert: Tensor, delete: Tensor,
-                draw_samples: bool = True, draw_p: bool = False) -> Tensor:
+    def forward(self, src: Tensor, src_mask: Tensor, tgt: Tensor, tgt_mask: Tensor, insert: Tensor, insert_mask: Tensor,
+                delete: Tensor, delete_mask: Tensor, draw_samples: bool = True, draw_p: bool = False) -> Tensor:
         """Process masked src and target sequences to return an output of probability over the dictionary.
 
         Args:
-            src (Tensor): Tensor of the source sequences with shape `(batch_size, src_seq_len, 1)`.
-            src_mask (Tensor): mask Tensor over the source sequences with shape `(batch_size, src_seq_len, 1)`.
-            tgt (Tensor): Tensor of the target sentences with shape `(batch_size, tgt_seq_len + 1, 1)` with a <start>
+            src (Tensor): Tensor of the source sequences with shape `(batch_size, src_seq_len)`.
+            src_mask (Tensor): mask Tensor over the source sequences with shape `(batch_size, src_seq_len)`.
+            tgt (Tensor): Tensor of the target sentences with shape `(batch_size, tgt_seq_len + 1)` with a <start>
                 token at the beginning of the sequence.
-            tgt_mask (Tensor): mask Tensor over the target sentences with shape `(batch_size, tgt_seq_len + 1, 1)`.
-            insert (Tensor): tensor of insertions of shape `(batch, insert_seq_len, 1)`.
-            delete (Tensor): tensor of deletions of shape `(batch, delete_seq_len, 1)`.
+            tgt_mask (Tensor): mask Tensor over the target sentences with shape `(batch_size, tgt_seq_len + 1)`.
+            insert (Tensor): tensor of insertions of shape `(batch, insert_seq_len)`.
+            insert_mask (Tensor): mask over tensor of insertions of shape `(batch, insert_seq_len)`.
+            delete (Tensor): tensor of deletions of shape `(batch, delete_seq_len)`.
+            delete_mask (Tensor): mask over tensor of deletions of shape `(batch, delete_seq_len)`.
             draw_samples (bool): Weather to draw samples VAE style or not (keep True for training).
             draw_p (bool): Edit vector drawn from random prior distribution (keep False for training).
 
@@ -51,13 +53,14 @@ class EditTransformer(nn.Module):
         """
         # encode
         source_embed = self.encoder(src, src_mask)
-        edit_embed = self.edit_encoder(insert, delete, draw_samples=draw_samples, draw_p=draw_p)
+        edit_embed = self.edit_encoder(insert, insert_mask, delete, delete_mask,
+                                       draw_samples=draw_samples, draw_p=draw_p)
 
         # decode
         # special triangle mask for decoding step by step:
-        batch_size, tgt_seq_len, _ = tgt.shape
-        triangle_mask = torch.ones([tgt_seq_len, tgt_seq_len], device=device).tril().unsqueeze(dim=0)
-        tgt_mask = tgt_mask * triangle_mask
+        batch_size, tgt_seq_len = tgt.shape
+        triangle_mask = torch.ones([tgt_seq_len, tgt_seq_len], device=device, dtype=torch.uint8).tril().unsqueeze(dim=0)
+        tgt_mask = tgt_mask.unsqueeze(-1) * triangle_mask
         logits = self.decoder(tgt, source_embed, src_mask, tgt_mask, edit_embed)
 
         return self.generator(logits)

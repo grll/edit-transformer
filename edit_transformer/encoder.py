@@ -38,7 +38,7 @@ class EncoderLayer(nn.Module):
 
         Args:
             x (Tensor): input of the encoder layer of shape `(batch, seq_len, d_model)`
-            mask (Tensor): mask of the input of shape `(batch, seq_len, 1)`
+            mask (Tensor): mask of the input of shape `(batch, seq_len)`
 
         Returns:
             Tensor: the output of an encoder layer of shape `(batch, seq_len, d_model)`
@@ -77,8 +77,8 @@ class Encoder(nn.Module):
         """Pass the input (and mask) through each layer in turn.
 
         Args:
-            x (Tensor): an input tensor of shape `(batch, seq_len, 1)`.
-            mask (Tensor): a mask tensor of shape `(batch, seq_len, 1)`.
+            x (Tensor): an input tensor of shape `(batch, seq_len)`.
+            mask (Tensor): a mask tensor of shape `(batch, seq_len)`.
 
         Returns:
             Tensor: an output tensor of shape `(batch, seq_len, d_model)`.
