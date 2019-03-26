@@ -70,8 +70,10 @@ class IteratorWrapper:
             src_mask = (src != self.pad_index)
 
             batch_size = batch.tgt[0].shape[0]
-            tgt_in = torch.cat([torch.tensor([[self.sos_index]] * batch_size), batch.tgt[0]], dim=-1)
-            tgt_out = torch.cat([batch.tgt[0], torch.tensor([[self.pad_index]] * batch_size)], dim=-1)
+            tgt_in = torch.cat(
+                [torch.tensor([[self.sos_index]] * batch_size, device=self.iterator.device), batch.tgt[0]], dim=-1)
+            tgt_out = torch.cat(
+                [batch.tgt[0], torch.tensor([[self.pad_index]] * batch_size, device=self.iterator.device)], dim=-1)
             tgt_out[range(batch_size), batch.tgt[1]] = self.eos_index
             tgt_mask = (tgt_in != self.pad_index)
 
