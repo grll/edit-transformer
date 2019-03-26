@@ -55,13 +55,13 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
     # Load the datasets
     logger.info("Loading Datasets...")
     csv_param = {'quoting': QUOTE_NONE}
-    # train_dataset = TabularDataset(config.dataset.train_path, "tsv", fields, csv_reader_params=csv_param)
-    # test_dataset = TabularDataset(config.dataset.test_path, "tsv", fields, csv_reader_params=csv_param)
-    valid_dataset = TabularDataset(config.dataset.valid_path, "tsv", fields, csv_reader_params=csv_param)
+    train_dataset = TabularDataset(config.dataset.train_path, "tsv", fields, csv_reader_params=csv_param)
+    test_dataset = TabularDataset(config.dataset.test_path, "tsv", fields, csv_reader_params=csv_param)
+    # valid_dataset = TabularDataset(config.dataset.valid_path, "tsv", fields, csv_reader_params=csv_param)
     logger.info("Done.")
 
     logger.info("Building Vocab...")
-    field.build_vocab(valid_dataset,
+    field.build_vocab(train_dataset,
                       max_size=config.vocab.max_size,
                       specials=['<pad>', '<sos>', '<eos>'],
                       vectors=config.vocab.vector_name,
@@ -69,7 +69,7 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
     logger.info("Done.")
 
     logger.info("Create Iterators...")
-    datasets = (valid_dataset, valid_dataset, valid_dataset)
+    datasets = (train_dataset, train_dataset, test_dataset)
     batch_sizes = (config.training.batch_size, config.training.eval.batch_size, config.training.eval.batch_size)
     repeats = (True, False, False)
     train_iterator, eval_train_iterator, eval_test_iterator = create_iterators(datasets, batch_sizes, repeats, device,
