@@ -79,11 +79,14 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
     logger.info("Done.")
 
     # 2. Model, optimizer, loss function initialization
+    logger.info("Create Model...")
     embedding = nn.Embedding.from_pretrained(field.vocab.vectors, freeze=True)
     edit_transformer = make_model(embedding)
     optimizer = Adam(edit_transformer.parameters(), lr=config.optimizer.lr)
+    logger.info("Done.")
 
     # 3. Training loop.
+    logger.info("Training...")
     edit_transformer.train()
     for batch in train_iterator:
         logits = edit_transformer(batch.src, batch.src_mask, batch.tgt_in, batch.tgt_mask, batch.insert,
@@ -109,6 +112,7 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
 
         if train_iterator.iterator.iterations == config.training.num_iter:
             break
+    logger.info("Done.")
 
 
 if __name__ == "__main__":

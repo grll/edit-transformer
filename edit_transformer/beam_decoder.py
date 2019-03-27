@@ -3,7 +3,7 @@ from queue import PriorityQueue
 from dataclasses import dataclass
 
 import torch
-from torch import Tensor
+from torch import LongTensor
 import torch.nn.functional as F
 
 from edit_transformer.model import EditTransformer
@@ -15,12 +15,12 @@ class Reference:
     """Store the references corresponding to a beam serch node.
 
     Attributes:
-        src_sequence (Tensor): the source sequence from which is derived a node of shape `(src_seq_len)`
-        tgt_out_sequence (Tensor): the out target sequence reference to a given node of shape `(tgt_seq_len)`
+        src_sequence (LongTensor): the source sequence from which is derived a node of shape `(src_seq_len)`
+        tgt_out_sequence (LongTensor): the out target sequence reference to a given node of shape `(tgt_seq_len)`
 
     """
-    src_sequence: Tensor
-    tgt_out_sequence: Tensor
+    src_sequence: LongTensor
+    tgt_out_sequence: LongTensor
 
 
 @dataclass
@@ -28,11 +28,11 @@ class BeamSearchNode:
     """Store a single node from the beam search.
 
     Attributes:
-        sequence (Tensor): the sequence of indices corresponding to the node Tensor of shape `(seq_len)`.
+        sequence (LongTensor): the sequence of indices corresponding to the node Tensor of shape `(seq_len)`.
         proba (float): the probability corresponding to this sequence.
 
     """
-    sequence: Tensor
+    sequence: LongTensor
     proba: float
 
     def queue_score(self) -> float:
@@ -59,7 +59,7 @@ class BeamSearchQueue(PriorityQueue):
         finished (bool): weather this queue is finished or not.
 
     """
-    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 5000) -> None:
+    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 1000) -> None:
         """ Initialize a BeamSearchQueue.
 
         Args:
@@ -77,18 +77,18 @@ class BeamSearchQueue(PriorityQueue):
         self.finished_nodes = []
         self.finished = False
 
-    def put_nowait(self, item: Tuple[float, Tensor]) -> None:
+    def put_nowait(self, item: Tuple[float, LongTensor]) -> None:
         """Create a new node and put it in the Queue.
 
         Args:
-            item (Tuple[float, Tensor]): tuple of probability, Tensor of shape `(seq_len)`.
+            item (Tuple[float, LongTensor]): tuple of probability, LongTensor of shape `(seq_len)`.
 
         """
         if not self.finished:
             if self.qsize() > self.q_limit:
-                self.finished = True
                 while len(self.finished_nodes) != self.beam_width:
                     self.finished_nodes.append(self.get_nowait()[1])
+                self.finished = True
             else:
                 node = BeamSearchNode(sequence=item[1], proba=item[0])
                 if node.sequence[-1].item() == self.eos_index or node.sequence.shape[0] == self.max_len:
@@ -127,22 +127,27 @@ class BeamSearchQueueBatch(list):
                 the container with.
 
         """
-        super().__init__(queue_batch)
+        if queue_batch is not None:
+            super().__init__(queue_batch)
+        else:
+            super().__init__()
         self.pad_index = pad_index
 
-    def get_next_batch_tensor(self) -> Union[Tuple[List[BeamSearchNode], Tensor], Tuple[None, None]]:
+    def get_next_batch_tensor(self) -> Union[Tuple[List[BeamSearchNode], LongTensor], Tuple[None, None]]:
         """ Get next batch tensor to pass through the model.
 
         Returns:
-            Union[Tuple[List[BeamSearchNode], Tensor], Tuple[None, None]]: a tuple composed of a list of current nodes
-                being evaluated and the next padded tensor on which to run the model of shape `(batch, max_seq_len)`. It
-                returns a tuple of None if every queue are finished.
+            Union[Tuple[List[BeamSearchNode], LongTensor], Tuple[None, None]]: a tuple composed of a list of current
+                nodes being evaluated and the next padded tensor on which to run the model of shape
+                `(batch, max_seq_len)`. It returns a tuple of None if every queue are finished.
 
         """
         max_len = 0
         current_nodes: List[Union[BeamSearchNode, Tuple[None, None]]] = []
         for queue in self:
-            node = queue.get_nowait()
+            r = queue.get_nowait()
+            node = r[1] if r is not None else None
+
             if node is not None:
                 if node.sequence.shape[0] > max_len:
                     max_len = node.sequence.shape[0]
@@ -156,7 +161,8 @@ class BeamSearchQueueBatch(list):
         for node in current_nodes:
             if node is not None:
                 len = node.sequence.shape[0]
-                seq_to_stack.append(torch.cat((node.sequence, torch.tensor([self.pad_index] * (max_len - len)))))
+                seq_to_stack.append(
+                    torch.cat((node.sequence, torch.tensor([self.pad_index] * (max_len - len), dtype=torch.long))))
             else:
                 seq_to_stack.append(torch.tensor([self.pad_index] * max_len))
 
@@ -203,7 +209,7 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
         if iterator.iterator.iterations > limit:
             break
         queue_batch = BeamSearchQueueBatch(pad_index)
-        tgt_in = batch.tgt_in[:, 0]
+        tgt_in = batch.tgt_in[:, 0].unsqueeze(-1)
         tgt_mask = tgt_in != pad_index
         logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
                        batch.delete_mask)
@@ -214,7 +220,7 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
         for index in range(topk_indices.shape[0]):
             queue = BeamSearchQueue(eos_index, beam_width, max_len)
             for k in range(topk):
-                queue.put_nowait((topk_proba[index][k].item(), topk_indices[index][k].cpu()))
+                queue.put_nowait((topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
             queue_batch.append(queue)
 
         current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
@@ -234,15 +240,15 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
                 else:
                     seq_indices.append(-1)
 
-            topk_indices = torch.topk(proba, topk)[1][:, seq_indices, :]  # shape `(batch, topk)`
-            topk_proba = torch.topk(proba, topk)[0][:, seq_indices, :]  # shape `(batch, topk)`
+            topk_indices = torch.topk(proba, topk)[1][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
+            topk_proba = torch.topk(proba, topk)[0][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
 
             for index in range(topk_indices.shape[0]):
                 n = current_nodes[index]
                 if n is not None:
                     for k in range(topk):
-                        queue[index].put_nowait((n.proba * topk_proba[index][k].item(),
-                                                 torch.cat((n.sequence, topk_indices[index][k].cpu()))))
+                        queue_batch[index].put_nowait((n.proba * topk_proba[index][k].item(), torch.cat(
+                            (n.sequence, topk_indices[index][k].long().unsqueeze(-1).cpu()))))
 
             current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
 
