@@ -15,11 +15,11 @@ training {
     eval {
         batch_size = 128
         small {
-            threshold = 10
+            threshold = 500
             limit = 10
         }
         big {
-            threshold = 50
+            threshold = 5000
             limit = 100
         }
     }
