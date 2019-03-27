@@ -1,12 +1,16 @@
 from typing import Tuple, List
 from logging import Logger
+from collections import Counter
+import math
 
+from torch import Tensor
 import torch.nn.functional as F
 from dependencies.text.torchtext.vocab import Vocab
 from tensorboardX import SummaryWriter
 
 from edit_transformer.model import EditTransformer
 from edit_transformer.iterator import IteratorWrapper
+from edit_transformer.beam_decoder import beam_search
 
 
 def compute_loss(model: EditTransformer, iterator: IteratorWrapper, limit: int, pad_index: int) -> float:
@@ -33,10 +37,46 @@ def compute_loss(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
     return sum(losses) / len(losses)
 
 
-def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int,
-                 vocab: Vocab) -> Tuple[float, List[str]]:
+def bleu_score(hypothesis: Tensor, reference: Tensor) -> float:
+    """Compute the BLEU score of a hypothesis tensor with a reference tensor.
+
+    Args:
+        hypothesis (Tensor): hypothesis / candidate sequence tensor of shape `(seq_len)`.
+        reference (Tensor): actual reference seuqence tensor of shape `(seq_len)`.
+
+    Returns:
+        float: the BLEU score between the two sequences.
+
+    """
+    stats = []
+    for n in range(1, 5):
+        h_ngrams = Counter(
+            [tuple(hypothesis[i:i+n].tolist()) for i in range(len(hypothesis) + 1 - n)]
+        )
+        r_ngrams = Counter(
+            [tuple(reference[i:i+n].tolist()) for i in range(len(reference) + 1 - n)]
+        )
+        stats.append(max([sum((h_ngrams & r_ngrams).values()), 0]))
+        stats.append(max([len(hypothesis) + 1 - n, 0]))
+
+    if 0 in stats:
+        return 0
+
+    c = len(hypothesis)
+    r = len(reference)
+    log_bleu_prec = sum([math.log(x / y) for x, y in zip(stats[::2], stats[1::2])]) / 4.
+    return math.exp(min([0, 1 - r / c]) + log_bleu_prec)
+
+
+def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, vocab: Vocab) -> float:
     """Compute the bleue score and return generated examples."""
-    return 0.0, []
+    nodes_list, references = beam_search(model, iterator, limit, vocab.stoi["<eos>"], vocab.stoi["<pad>"])
+
+    bleus = []
+    for nodes, reference in zip(nodes_list, references):
+        bleus.append(bleu_score(nodes[0].sequence, reference.tgt_out_sequence))
+
+    return sum(bleus) / len(bleus)
 
 
 def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test_iterator: IteratorWrapper, limit: int,
@@ -59,15 +99,19 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
     train_loss = compute_loss(model, train_iterator, limit, vocab.stoi["<pad>"])
     test_loss = compute_loss(model, test_iterator, limit, vocab.stoi["<pad>"])
 
-    train_bleu, train_examples = compute_bleu(model, train_iterator, limit, vocab)
-    test_bleu, test_examples = compute_bleu(model, train_iterator, limit, vocab)
+    train_bleu = compute_bleu(model, train_iterator, limit, vocab)
+    test_bleu = compute_bleu(model, train_iterator, limit, vocab)
     model.train()
 
     # logging
     logger.info("ITER #{}".format(iteration))
     logger.info("{}_train_loss: {}".format(label, train_loss))
     logger.info("{}_test_loss: {}".format(label, test_loss))
+    logger.info("{}_train_bleu: {}".format(label, train_bleu))
+    logger.info("{}_test_bleu: {}".format(label, test_bleu))
 
     # tb_logging
     tb_writter.add_scalar("{}_train_loss".format(label), train_loss, iteration)
     tb_writter.add_scalar("{}_test_loss".format(label), test_loss, iteration)
+    tb_writter.add_scalar("{}_train_bleu".format(label), train_bleu, iteration)
+    tb_writter.add_scalar("{}_test_bleu".format(label), test_bleu, iteration)

@@ -90,13 +90,14 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
                                   batch.insert_mask, batch.delete, batch.delete_mask)
         loss = F.nll_loss(F.log_softmax(logits.transpose(1, 2), dim=1), batch.tgt_out,
                           ignore_index=field.vocab.stoi['<pad>'])
-        logger.info("loss: {}".format(loss.item()))
 
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
 
-        del batch, logits, loss  # free up some space on the gpu (not used for evaluation).
+        del batch, logits, loss  # free up some space on the RAM (not used for evaluation).
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()  # free also the space on the GPU.
 
         if train_iterator.iterator.iterations % config.training.eval.small.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.small.limit,
