@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from logging import Logger
 from collections import Counter
 import math
@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 
 from edit_transformer.model import EditTransformer
 from edit_transformer.iterator import IteratorWrapper
-from edit_transformer.beam_decoder import beam_search
+from edit_transformer.beam_decoder import beam_search, BeamSearchNode, Reference
 
 
 def compute_loss(model: EditTransformer, iterator: IteratorWrapper, limit: int, pad_index: int) -> float:
@@ -35,6 +35,55 @@ def compute_loss(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
         loss = F.nll_loss(F.log_softmax(logits.transpose(1, 2), dim=1), batch.tgt_out, ignore_index=pad_index)
         losses.append(loss.item())
     return sum(losses) / len(losses)
+
+
+def tensor_to_sentence(text_seq: LongTensor, vocab: Vocab) -> str:
+    """Transform a tensor (sequence of indices) into some readable text.
+
+    Args:
+        text_seq (LongTensor): tensor sequence of indices of shape `(seq_len)`.
+        vocab (Vocab): vocabulary object used with the model that generated the text_seq.
+
+    """
+    return " ".join([vocab.itos[v.item()] for v in text_seq])
+
+
+class ExamplesWriter:
+    """Class to write the computed examples of generation.
+
+    Attributes:
+        path (str): path to write the examples generated.
+
+    """
+    def __init__(self, path: str) -> None:
+        """Initialize the ExamplesWriter.
+
+        Args:
+            path(str): the path to the file where to save the examples.
+
+        """
+        self.path = path
+
+    def write_samples(self, iteration: int, nodes_list: List[List[BeamSearchNode]],
+                      references: List[Reference], vocab: Vocab) -> None:
+        """ Append the provided samples to the file specified in the path attribute.
+
+        Args:
+            iteration (int): the number of iteration of training before obtaining those results.
+            nodes_list (List[List[BeamSearchNode]]): a result of a beam search on the model evaluated.
+            references (List[Reference]): the references corresponding to the nodes_list.
+            vocab (Vocab): the vocab used in the tensor passed to the writer.
+
+        """
+        with open(self.path, mode="a", encoding="utf8") as f:
+            f.write("=" * 20 + " ITER #{} ".format(iteration) + "=" * 20 + "\n")
+            for nodes, reference in zip(nodes_list, references):
+                f.write("SRC | {}\n".format(tensor_to_sentence(reference.src_sequence, vocab)))
+                f.write("TGT | {}\n".format(tensor_to_sentence(reference.tgt_out_sequence, vocab)))
+                for node in nodes:
+                    f.write("CDT | {}\n".format(tensor_to_sentence(node.sequence, vocab)))
+                f.write("===\n")
+            f.write("\n")
 
 
 def bleu_score(hypothesis: LongTensor, reference: LongTensor) -> float:
@@ -68,13 +117,23 @@ def bleu_score(hypothesis: LongTensor, reference: LongTensor) -> float:
     return math.exp(min([0, 1 - r / c]) + log_bleu_prec)
 
 
-def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, vocab: Vocab) -> float:
+def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, vocab: Vocab,
+                 ex_writer: Optional[ExamplesWriter] = None, iteration: Optional[int] = None) -> float:
     """Compute the bleue score and return generated examples.
 
     Args:
         model (EditTransformer): the model being evaluated.
+        iterator (IteratorWrapper): iterator yielding the batches to be evaluated.
+        limit (int): the limit number of batch to go through in the iterator.
+        vocab (Vocab): the vocabulary used with the corresponding model.
+        ex_writer (Optional[ExamplesWriter]): an optional examples writer to write the examples generated.
+        iteration (Optional[int]): an optional int corresponding to the iteration of the model.
+
     """
     nodes_list, references = beam_search(model, iterator, limit, vocab.stoi["<eos>"], vocab.stoi["<pad>"])
+
+    if ex_writer is not None:
+        ex_writer.write_samples(iteration, nodes_list, references, vocab)
 
     bleus = []
     for nodes, reference in zip(nodes_list, references):
@@ -84,7 +143,8 @@ def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
 
 
 def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test_iterator: IteratorWrapper, limit: int,
-                   vocab: Vocab, label: str, iteration: int, logger: Logger, tb_writter: SummaryWriter):
+                   vocab: Vocab, label: str, iteration: int, logger: Logger, tb_writter: SummaryWriter,
+                   ex_writer: ExamplesWriter) -> None:
     """Evaluate a model over train and test iterator for a certain amount of batches.
 
     Args:
@@ -97,6 +157,7 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
         iteration (int): current training iteration being evaluated.
         logger (Logger): logger to use to log the results.
         tb_writter (SummaryWriter): tensorboard X summary writter with path already configured.
+        ex_writer ()
 
     """
     model.eval()
@@ -108,10 +169,10 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
     logger.info("Done.")
 
     logger.info("Computing train bleu score...")
-    train_bleu = compute_bleu(model, train_iterator, limit, vocab)
+    train_bleu = compute_bleu(model, train_iterator, limit, vocab, ex_writer, iteration)
     logger.info("Done.")
     logger.info("Computing test bleu score...")
-    test_bleu = compute_bleu(model, train_iterator, limit, vocab)
+    test_bleu = compute_bleu(model, train_iterator, limit, vocab, ex_writer, iteration)
     logger.info("Done.")
     model.train()
 

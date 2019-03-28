@@ -16,10 +16,11 @@ from dependencies.logger import setup_logging
 from dependencies.workspace import IntegerDirectories
 from edit_transformer.model import make_model
 from edit_transformer.iterator import create_iterators
-from edit_transformer.evaluation import evaluate_model
+from edit_transformer.evaluation import evaluate_model, ExamplesWriter
 
 
-def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torch.device) -> None:
+def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: ExamplesWriter,
+         device: torch.device) -> None:
     """ Train an 'edit-transformer' model with the provided config.
 
     Args:
@@ -42,6 +43,7 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
             }
         logger (Logger): the logger to use in the main function.
         tb_writter (SummaryWriter): tensorboardX writter with path already configured.
+        ex_writer (ExamplesWriter): a writer to write the generated examples during beam search.
         device (torch.device): the torch device on which to run the training (cpu or gpu).
 
     """
@@ -104,11 +106,11 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, device: torc
 
         if train_iterator.iterator.iterations % config.training.eval.small.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.small.limit,
-                           field.vocab, "small", train_iterator.iterator.iterations, logger, tb_writter)
+                           field.vocab, "small", train_iterator.iterator.iterations, logger, tb_writter, ex_writer)
 
         if train_iterator.iterator.iterations % config.training.eval.big.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.big.limit,
-                           field.vocab, "big", train_iterator.iterator.iterations,  logger, tb_writter)
+                           field.vocab, "big", train_iterator.iterator.iterations,  logger, tb_writter, ex_writer)
 
         if train_iterator.iterator.iterations == config.training.num_iter:
             break
@@ -126,6 +128,8 @@ if __name__ == "__main__":
     logger_ = getLogger(__name__)
     # - Tensorboard Logger
     tb_writter_ = SummaryWriter(directory_path)
+    # - Custom File Logger
+    ex_writer_ = ExamplesWriter(join(directory_path, "examples.txt"))
 
     # 2. config
     config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "edit_transformer.txt"))
@@ -136,4 +140,4 @@ if __name__ == "__main__":
     device_ = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 4. run the training
-    main(config_, logger_, tb_writter_, device_)
+    main(config_, logger_, tb_writter_, ex_writer_, device_)
