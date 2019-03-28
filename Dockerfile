@@ -73,4 +73,4 @@ USER $UNAME
 # docker run -it --rm -v $(pwd):/code -v $(pwd)/../new-data-augmentation-data:/data -e INTERACTIVE_ENVIRONMENT=True edit-transformer:0.0.2 /bin/bash
 # RUN TRAINING BACKGROUND MODE
 # docker run -d --rm -v $(pwd):/code -v $(pwd)/../edit-transformer-data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/training.py
-
+# docker run -d --rm -v $(pwd):/code -v $(pwd)/../edit-transformer-data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/training.py

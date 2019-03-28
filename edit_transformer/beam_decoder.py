@@ -1,7 +1,6 @@
 from typing import Tuple, Union, Iterable, List, Optional, Any
 from queue import PriorityQueue
 from dataclasses import dataclass, field
-from heapq import heappop
 import math
 
 import torch
@@ -199,8 +198,8 @@ class BeamSearchQueueBatch(list):
 
 
 def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, eos_index: int, pad_index: int,
-                topk: int = 5, beam_width: int = 5, max_len: int = 50) -> Tuple[List[List[BeamSearchNode]],
-                                                                                List[Reference]]:
+                topk: int = 5, beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
+                draw_p: bool = False) -> Tuple[List[List[BeamSearchNode]], List[Reference]]:
     """ Perform a beam_search on the provided data using the provided model.
 
     Args:
@@ -212,6 +211,8 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
         topk (int): the number of best results to keep at each time-step.
         beam_width (int): the number of results to search for and output per sample.
         max_len (int): the maximum length of a sequence.
+        draw_samples (bool): Weather to draw samples VAE style or not (keep True for training).
+        draw_p (bool): Edit vector drawn from random prior distribution (keep False for training).
 
     Returns:
         List[List[BeamSearchNode]]: a list of list of BeamSearchNode of shape `(num_samples, beam_width)`.
@@ -226,7 +227,7 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
         tgt_in = batch.tgt_in[:, 0].unsqueeze(-1)
         tgt_mask = tgt_in != pad_index
         logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
-                       batch.delete_mask)
+                       batch.delete_mask, draw_samples, draw_p)
         proba = F.softmax(logits, dim=-1)
         topk_indices = torch.topk(proba, topk)[1][:, -1, :]  # shape `(batch, topk)`
         topk_proba = torch.topk(proba, topk)[0][:, -1, :]  # shape `(batch, topk)`
@@ -243,7 +244,7 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
             tgt_mask = tgt_in != pad_index
 
             logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
-                           batch.delete_mask)
+                           batch.delete_mask, draw_samples, draw_p)
             logits[:, :, pad_index] = - float('inf')  # -> leads to a true 0 probability in the softmax for the padding.
             proba = F.softmax(logits, dim=-1)
 

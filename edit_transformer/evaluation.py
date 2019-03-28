@@ -132,7 +132,8 @@ def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
         iteration (Optional[int]): an optional int corresponding to the iteration of the model.
 
     """
-    nodes_list, references = beam_search(model, iterator, limit, vocab.stoi["<eos>"], vocab.stoi["<pad>"])
+    nodes_list, references = beam_search(model, iterator, limit, vocab.stoi["<eos>"], vocab.stoi["<pad>"],
+                                         draw_samples=False)
 
     if ex_writer is not None:
         ex_writer.write_samples(iteration, nodes_list, references, vocab)
