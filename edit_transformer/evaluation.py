@@ -157,7 +157,7 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
         iteration (int): current training iteration being evaluated.
         logger (Logger): logger to use to log the results.
         tb_writter (SummaryWriter): tensorboard X summary writter with path already configured.
-        ex_writer ()
+        ex_writer (ExamplesWriter): custom writer to write the examples.
 
     """
     model.eval()

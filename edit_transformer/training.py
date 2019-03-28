@@ -40,6 +40,14 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
                 'training.eval.big.threshold (int)': iteration threshold at which big eval are performed.
                 'training.eval.big.limit (int)': maximum number of batch on which to run the big evaluation.
                 'optimizer.lr (float)': learning rate to use.
+                'model.edit_dim (int)': size of the edit vector to use.
+                'model.n (int)': number of decoder and encoder layer to use.
+                'model.d_ff (int)': size of the linear projection at the end of each decoder and encoder layer.
+                'model.h (int)': number of multi-heads to use for multi-head attention (divisor of word_dim).
+                'model.dropout (float)': dropout rate to use in the model.
+                'lamb_reg (float)': dispersion regularization term of for the edit-encoder vMF distribution.
+                'norm_eps (float)': epsilon used to sample the random noise added to the norm of the edit_vector.
+                'norm_max (float)':scalar used to rescale the norm samples (corresponds to the maximum norm).
             }
         logger (Logger): the logger to use in the main function.
         tb_writter (SummaryWriter): tensorboardX writter with path already configured.
@@ -83,7 +91,9 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
     # 2. Model, optimizer, loss function initialization
     logger.info("Create Model...")
     embedding = nn.Embedding.from_pretrained(field.vocab.vectors, freeze=True)
-    edit_transformer = make_model(embedding)
+    edit_transformer = make_model(embedding, config.model.edit_dim, config.model.n, config.model.d_ff, config.model.h,
+                                  config.model.dropout, config.model.lamb_reg, config.model.norm_eps,
+                                  config.model.norm_max)
     optimizer = Adam(edit_transformer.parameters(), lr=config.optimizer.lr)
     logger.info("Done.")
 
