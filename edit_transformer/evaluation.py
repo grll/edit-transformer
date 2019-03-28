@@ -3,7 +3,7 @@ from logging import Logger
 from collections import Counter
 import math
 
-from torch import Tensor
+from torch import LongTensor
 import torch.nn.functional as F
 from dependencies.text.torchtext.vocab import Vocab
 from tensorboardX import SummaryWriter
@@ -37,12 +37,12 @@ def compute_loss(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
     return sum(losses) / len(losses)
 
 
-def bleu_score(hypothesis: Tensor, reference: Tensor) -> float:
+def bleu_score(hypothesis: LongTensor, reference: LongTensor) -> float:
     """Compute the BLEU score of a hypothesis tensor with a reference tensor.
 
     Args:
-        hypothesis (Tensor): hypothesis / candidate sequence tensor of shape `(seq_len)`.
-        reference (Tensor): actual reference seuqence tensor of shape `(seq_len)`.
+        hypothesis (LongTensor): hypothesis / candidate sequence tensor of shape `(seq_len)`.
+        reference (LongTensor): actual reference seuqence tensor of shape `(seq_len)`.
 
     Returns:
         float: the BLEU score between the two sequences.
@@ -69,7 +69,11 @@ def bleu_score(hypothesis: Tensor, reference: Tensor) -> float:
 
 
 def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, vocab: Vocab) -> float:
-    """Compute the bleue score and return generated examples."""
+    """Compute the bleue score and return generated examples.
+
+    Args:
+        model (EditTransformer): the model being evaluated.
+    """
     nodes_list, references = beam_search(model, iterator, limit, vocab.stoi["<eos>"], vocab.stoi["<pad>"])
 
     bleus = []
@@ -96,11 +100,19 @@ def evaluate_model(model: EditTransformer, train_iterator: IteratorWrapper, test
 
     """
     model.eval()
+    logger.info("Computing train losses...")
     train_loss = compute_loss(model, train_iterator, limit, vocab.stoi["<pad>"])
+    logger.info("Done.")
+    logger.info("Computing test losses...")
     test_loss = compute_loss(model, test_iterator, limit, vocab.stoi["<pad>"])
+    logger.info("Done.")
 
+    logger.info("Computing train bleu score...")
     train_bleu = compute_bleu(model, train_iterator, limit, vocab)
+    logger.info("Done.")
+    logger.info("Computing test bleu score...")
     test_bleu = compute_bleu(model, train_iterator, limit, vocab)
+    logger.info("Done.")
     model.train()
 
     # logging
