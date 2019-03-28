@@ -1,6 +1,7 @@
-from typing import Tuple, Union, Iterable, List, Optional
+from typing import Tuple, Union, Iterable, List, Optional, Any
 from queue import PriorityQueue
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from heapq import heappop
 
 import torch
 from torch import LongTensor
@@ -47,6 +48,13 @@ class BeamSearchNode:
         return - self.proba
 
 
+@dataclass(order=True)
+class PrioritizedItem:
+    """Priority item data class that implement sorting method using priority field only."""
+    priority: float
+    item: BeamSearchNode = field(compare=False)
+
+
 class BeamSearchQueue(PriorityQueue):
     """An extend PriorityQueue to handle the beam search of a single batch sample.
 
@@ -87,7 +95,7 @@ class BeamSearchQueue(PriorityQueue):
         if not self.finished:
             if self.qsize() > self.q_limit:
                 while len(self.finished_nodes) != self.beam_width:
-                    self.finished_nodes.append(self.get_nowait()[1])
+                    self.finished_nodes.append(self.get_nowait().item)
                 self.finished = True
             else:
                 node = BeamSearchNode(sequence=item[1], proba=item[0])
@@ -96,9 +104,9 @@ class BeamSearchQueue(PriorityQueue):
                     if len(self.finished_nodes) == self.beam_width:
                         self.finished = True
                 else:
-                    super().put_nowait((node.queue_score(), node))
+                    super().put_nowait(PrioritizedItem(node.queue_score(), node))
 
-    def get_nowait(self) -> Union[Tuple[float, BeamSearchNode], None]:
+    def get_nowait(self) -> Union[PrioritizedItem, None]:
         """Get the last best node if the Queue is not finished.
 
         Returns
@@ -146,7 +154,7 @@ class BeamSearchQueueBatch(list):
         current_nodes: List[Union[BeamSearchNode, Tuple[None, None]]] = []
         for queue in self:
             r = queue.get_nowait()
-            node = r[1] if r is not None else None
+            node = r.item if r is not None else None
 
             if node is not None:
                 if node.sequence.shape[0] > max_len:
