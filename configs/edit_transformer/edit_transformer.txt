@@ -16,11 +16,11 @@ training {
         batch_size = 128
         small {
             threshold = 500
-            limit = 10
+            limit = 5
         }
         big {
             threshold = 5000
-            limit = 100
+            limit = 10
         }
     }
 }
