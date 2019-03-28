@@ -2,6 +2,7 @@ from typing import Tuple, Union, Iterable, List, Optional, Any
 from queue import PriorityQueue
 from dataclasses import dataclass, field
 from heapq import heappop
+import math
 
 import torch
 from torch import LongTensor
@@ -18,10 +19,14 @@ class Reference:
     Attributes:
         src_sequence (LongTensor): the source sequence from which is derived a node of shape `(src_seq_len)`
         tgt_out_sequence (LongTensor): the out target sequence reference to a given node of shape `(tgt_seq_len)`
+        insert_sequence (LongTensor): the filtered insert sequence from src to target of shape `(in_seq_len)`
+        delete_sequence (LongTensor): the filtered delete sequence from src to target of shape `(in_seq_len)`
 
     """
     src_sequence: LongTensor
     tgt_out_sequence: LongTensor
+    insert_sequence: LongTensor
+    delete_sequence: LongTensor
 
 
 @dataclass
@@ -31,10 +36,12 @@ class BeamSearchNode:
     Attributes:
         sequence (LongTensor): the sequence of indices corresponding to the node Tensor of shape `(seq_len)`.
         proba (float): the probability corresponding to this sequence.
+        alpha (float): regularization parameter (higher alpha favors longer sentences).
 
     """
     sequence: LongTensor
     proba: float
+    alpha: float = 0.6
 
     def queue_score(self) -> float:
         """Return a priority queue score for the node (lowest are first).
@@ -42,10 +49,9 @@ class BeamSearchNode:
         Returns:
             float: score that will be used by the PriorityQueue.
 
-        TODO: implement WU 2016 penalty for short sentences.
-
         """
-        return - self.proba
+        lp = ((5 + len(self.sequence)) ** self.alpha) / ((5 + 1) ** self.alpha)  # WU 2016
+        return - math.log(self.proba) / lp
 
 
 @dataclass(order=True)
@@ -266,6 +272,11 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
             tgt_out = tgt_out[tgt_out != pad_index].cpu()
             src = batch.src[i]
             src = src[src != pad_index].cpu()
-            references.append(Reference(src_sequence=src, tgt_out_sequence=tgt_out))
+            insert = batch.insert[i]
+            insert = insert[insert != pad_index].cpu()
+            delete = batch.delete[i]
+            delete = delete[delete != pad_index].cpu()
+            references.append(Reference(src_sequence=src, tgt_out_sequence=tgt_out, insert_sequence=insert,
+                                        delete_sequence=delete))
 
     return output_nodes, references

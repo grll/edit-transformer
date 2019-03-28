@@ -80,6 +80,8 @@ class ExamplesWriter:
             for nodes, reference in zip(nodes_list, references):
                 f.write("SRC | {}\n".format(tensor_to_sentence(reference.src_sequence, vocab)))
                 f.write("TGT | {}\n".format(tensor_to_sentence(reference.tgt_out_sequence, vocab)))
+                f.write("IN  | {}\n".format(tensor_to_sentence(reference.insert_sequence, vocab)))
+                f.write("DEL | {}\n".format(tensor_to_sentence(reference.delete_sequence, vocab)))
                 for node in nodes:
                     f.write("CDT | {}\n".format(tensor_to_sentence(node.sequence, vocab)))
                 f.write("===\n")
