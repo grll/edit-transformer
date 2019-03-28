@@ -20,7 +20,7 @@ from edit_transformer.evaluation import evaluate_model, ExamplesWriter
 
 
 def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: ExamplesWriter,
-         device: torch.device) -> None:
+         device: torch.device, directory_path: str) -> None:
     """ Train an 'edit-transformer' model with the provided config.
 
     Args:
@@ -53,6 +53,7 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
         tb_writter (SummaryWriter): tensorboardX writter with path already configured.
         ex_writer (ExamplesWriter): a writer to write the generated examples during beam search.
         device (torch.device): the torch device on which to run the training (cpu or gpu).
+        directory_path (str): pass to this experiment directory.
 
     """
     # 1. Data Processing
@@ -114,15 +115,23 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
         if torch.cuda.is_available():
             torch.cuda.empty_cache()  # free also the space on the GPU.
 
-        if train_iterator.iterator.iterations % config.training.eval.small.threshold == 0:
+        iteration = train_iterator.iterator.iterations
+        if iteration % config.training.eval.small.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.small.limit,
-                           field.vocab, "small", train_iterator.iterator.iterations, logger, tb_writter, ex_writer)
+                           field.vocab, "small", iteration, logger, tb_writter, ex_writer)
 
-        if train_iterator.iterator.iterations % config.training.eval.big.threshold == 0:
+        if iteration % config.training.eval.big.threshold == 0:
             evaluate_model(edit_transformer, eval_train_iterator, eval_test_iterator, config.training.eval.big.limit,
-                           field.vocab, "big", train_iterator.iterator.iterations,  logger, tb_writter, ex_writer)
+                           field.vocab, "big", iteration,  logger, tb_writter, ex_writer)
 
-        if train_iterator.iterator.iterations == config.training.num_iter:
+        if iteration % config.training.save_checkpoint_iter == 0:
+            obj_to_save = {'step': iteration,
+                           'emb_state_dict': embedding.state_dict(),
+                           'model_state_dict': edit_transformer.state_dict(),
+                           'optimizer_state_dict': optimizer.state_dict()}
+            torch.save(obj_to_save, join(directory_path, "checkpoint_{}.pth.tar".format(iteration)))
+
+        if iteration == config.training.num_iter:
             break
     logger.info("Done.")
 
@@ -130,24 +139,24 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
 if __name__ == "__main__":
     # 0. Create folder for the training run
     integer_directories = IntegerDirectories(data.data_workspace.training_runs)
-    directory_path = integer_directories.new_dir()
+    directory_path_ = integer_directories.new_dir()
 
     # 1. logging
     # - Standard Logger
-    setup_logging(root=directory_path, noname=True)
+    setup_logging(root=directory_path_, noname=True)
     logger_ = getLogger(__name__)
     # - Tensorboard Logger
-    tb_writter_ = SummaryWriter(directory_path)
+    tb_writter_ = SummaryWriter(directory_path_)
     # - Custom File Logger
-    ex_writer_ = ExamplesWriter(join(directory_path, "examples.txt"))
+    ex_writer_ = ExamplesWriter(join(directory_path_, "examples.txt"))
 
     # 2. config
     config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "edit_transformer.txt"))
-    config_.to_file(join(directory_path, "config.txt"))
+    config_.to_file(join(directory_path_, "config.txt"))
     logger_.info("Config:\n{}".format(config_.to_str()))
 
     # 3. device
     device_ = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 4. run the training
-    main(config_, logger_, tb_writter_, ex_writer_, device_)
+    main(config_, logger_, tb_writter_, ex_writer_, device_, directory_path_)

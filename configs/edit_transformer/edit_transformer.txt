@@ -12,6 +12,7 @@ vocab {
 training {
     batch_size = 128
     num_iter = 400000
+    save_checkpoint_iter = 50000
     eval {
         batch_size = 128
         small {
