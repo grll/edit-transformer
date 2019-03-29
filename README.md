@@ -71,7 +71,7 @@ script. This script format the data and filter insertions and deletions between 
 This preprocessing step can be directly ran using the following command:
 
 ```bash
-docker run -d --rm -v $(pwd):/code -v $(pwd)/../edit-transformer-data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/preprocess.py
+docker run -d --rm -v $(pwd):/code -v $(pwd)/../data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/preprocess.py
 ```
 
 > In case of error make sure everything is correct in the corresponding config file 
@@ -88,7 +88,7 @@ available in `edit_transformer/training.py` allows to train the "edit-transforme
 this file before running the following command:
 
 ```bash
-docker run -d --rm -v $(pwd):/code -v $(pwd)/../edit-transformer-data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/training.py
+docker run -d --rm -v $(pwd):/code -v $(pwd)/../data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/training.py
 ```
 
 > This script generates a new folder for each run with a number in `/data/training_runs`. In this spefic folder you will
