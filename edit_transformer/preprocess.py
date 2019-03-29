@@ -1,8 +1,10 @@
 from typing import Optional
 from os.path import join
+from logging import Logger, getLogger
 
 from dependencies import data
 from dependencies.config import Config
+from dependencies.logger import setup_logging
 
 
 def process_line(line: str, free_set: Optional[set] = None) -> str:
@@ -36,7 +38,7 @@ def process_line(line: str, free_set: Optional[set] = None) -> str:
     return sentence_1 + "\t" + sentence_2 + "\t" + " ".join(insert) + "\t" + " ".join(delete) + "\n"
 
 
-def main(config: Config) -> None:
+def main(config: Config, logger: Logger) -> None:
     """Preprocess TSV formatted files specified in config and create new TSV preprocessed corresponding files.
 
     Notes:
@@ -47,7 +49,8 @@ def main(config: Config) -> None:
         config (Config): A config object (usually loaded from file) that possess the following keys/attributes:
             - raw_data_paths (List[str]): path to original TSV files.
             - use_free_set (bool): weather to filter `insert` and `delete` using the specified `free_set.txt` file.
-`           - free_set_path (str): path to the `free_set.txt` file (one token per line).
+            - free_set_path (str): path to the `free_set.txt` file (one token per line).
+        logger (Logger): logger to use in this function.
 
     """
     if config.use_free_set:
@@ -68,5 +71,11 @@ def main(config: Config) -> None:
 
 
 if __name__ == "__main__":
+    # - Standard Logger
+    setup_logging()
+    logger_ = getLogger(__name__)
+
     config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "preprocess.txt"))
-    main(config_)
+    logger_.info("Config:\n{}".format(config_.to_str()))
+
+    main(config_, logger_)
