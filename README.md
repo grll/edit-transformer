@@ -1,7 +1,7 @@
 EDIT-TRANSFORMER
 ==================
 
-This master thesis project introduce the "edit-transformer". A generative model based on the Google Transformer 
+This project introduce the "edit-transformer". A generative model based on the Google Transformer 
 seq-to-seq from "Attention is all you need" that enables data augmentation. The data augmentation is performed by 
 editing existing prototype sentences in a similar way as in "Generating sentences by editing prototypes". Training on 
 pair of similar sentences allows the model to learn how to edit sentences and at inference performs generation.
