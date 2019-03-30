@@ -46,6 +46,7 @@ def preprocess(prompt: str, nlp: Any, vocab: Vocab) -> T_LongTensor:
         elif token.ent_iob_ == "I":
             entities[ent_name][-1] += " " + token.text
 
+    preprocessed_tokens.append("<eos>")
 
     return torch.tensor([[vocab.stoi[t] for t in preprocessed_tokens]])  # TODO: handle the device here as well
 

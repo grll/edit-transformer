@@ -63,10 +63,13 @@ class Batch:
             Batch: a newly created batch input for the model.
 
         """
-        src = batch.src[0]
+        batch_size = batch.src[0].shape[0]
+        src = torch.cat(
+            [batch.tgt[0], torch.tensor([[pad_index]] * batch_size, device=batch.src[0].device)], dim=-1)
+        src[range(batch_size), batch.src[1]] = eos_index
         src_mask = (src != pad_index)
 
-        batch_size = batch.tgt[0].shape[0]
+
         tgt_in = torch.cat(
             [torch.tensor([[sos_index]] * batch_size, device=batch.tgt[0].device), batch.tgt[0]], dim=-1)
         tgt_out = torch.cat(
