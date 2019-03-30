@@ -103,7 +103,8 @@ def main(config: Config, logger: Logger) -> None:
 
         logger.info("IN | {}".format(tensor_to_sentence(references[0].src_sequence, vocab)))
         for node in nodes_list[0]:
-            logger.info("CDT | {}".format(tensor_to_sentence(node.sequence, vocab)))
+            logger.info("CDT | {:.4f} | {:.4f} | {}".format(node.proba, node.queue_score(),
+                                                            tensor_to_sentence(node.sequence, vocab)))
 
 
 if __name__ == "__main__":

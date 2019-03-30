@@ -7,6 +7,7 @@ import torch
 from dependencies.typing import T_LongTensor
 from dependencies.text.torchtext.data.iterator import BucketIterator
 from dependencies.text.torchtext.data.dataset import TabularDataset
+from dependencies.text.torchtext.data.batch import Batch as TextBatch
 
 
 @dataclass
@@ -41,11 +42,11 @@ class Batch:
         return self.batch_size
 
     @classmethod
-    def from_iterator_batch(cls, batch: Any, pad_index: int, sos_index: int, eos_index: int) -> Batch:
+    def from_iterator_batch(cls, batch: TextBatch, pad_index: int, sos_index: int, eos_index: int) -> Batch:
         """Create a batch from an iterator batch.
 
         Args:
-            batch (Any): a batch from iterator to wrap into `Batch` with the following attributes:
+            batch (TextBatch): a batch from iterator to wrap into `Batch` with the following attributes:
                 {
                     'src (Tuple[T_LongTensor, T_LongTensor])': tuple of tensors containing the source sentence
                         numericalized and padded of shape `(batch_size, seq_len)` and the length of each sentence of
@@ -70,7 +71,7 @@ class Batch:
         """
         batch_size = len(batch)
         src = torch.cat(
-            [batch.tgt[0], torch.tensor([[pad_index]] * batch_size, device=batch.src[0].device)], dim=-1)
+            [batch.src[0], torch.tensor([[pad_index]] * batch_size, device=batch.src[0].device)], dim=-1)
         src[range(batch_size), batch.src[1]] = eos_index
         src_mask = (src != pad_index)
 
