@@ -84,26 +84,26 @@ def main(config: Config, logger: Logger) -> None:
     nlp = spacy.load("en_core_web_lg")
     logger.info("Done.")
 
+    while True:
+        prompt = input("Enter a sentence to be augmented:")
+        logger.info("Augmenting sentence: `{}`...".format(prompt))
 
-    prompt = input("Enter a sentence to be augmented:")
-    logger.info("Augmenting sentence: `{}`...".format(prompt))
+        logger.info("Pre-processing the sentence...")
+        src = preprocess(prompt, nlp, vocab)  # TODO: specify the device.
+        logger.info("Done.")
 
-    logger.info("Pre-processing the sentence...")
-    src = preprocess(prompt, nlp, vocab)  # TODO: specify the device.
-    logger.info("Done.")
-
-    logger.info("Creating a Batch for the model...")
-    batch = Batch.from_src_seq_only(src, vocab.stoi["<pad>"], vocab.stoi["<sos>"], vocab.stoi["<eos>"])
-    logger.info("Done.")
+        logger.info("Creating a Batch for the model...")
+        batch = Batch.from_src_seq_only(src, vocab.stoi["<pad>"], vocab.stoi["<sos>"], vocab.stoi["<eos>"])
+        logger.info("Done.")
 
 
-    logger.info("Performing the beam search...")
-    nodes_list, references = beam_search(edit_transformer, batch, vocab.stoi["<eos>"], vocab.stoi["<pad>"], draw_p=True)
-    logger.info("Done.")
+        logger.info("Performing the beam search...")
+        nodes_list, references = beam_search(edit_transformer, batch, vocab.stoi["<eos>"], vocab.stoi["<pad>"], draw_p=True)
+        logger.info("Done.")
 
-    logger.info("IN | {}".format(tensor_to_sentence(references[0].src_sequence, vocab)))
-    for node in nodes_list[0]:
-        logger.info("CDT | {}".format(tensor_to_sentence(node.sequence, vocab)))
+        logger.info("IN | {}".format(tensor_to_sentence(references[0].src_sequence, vocab)))
+        for node in nodes_list[0]:
+            logger.info("CDT | {}".format(tensor_to_sentence(node.sequence, vocab)))
 
 
 if __name__ == "__main__":

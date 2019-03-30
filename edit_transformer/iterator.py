@@ -23,6 +23,7 @@ class Batch:
         insert_mask (Tensor): mask over tensor of insert of shape `(batch_size, insert_seq_len)`.
         delete (Tensor): tensor of deleted words of shape `(batch_size, delete_seq_len)`.
         delete_mask (Tensor): mask over tensor of deleted words of shape `(batch_size, delete_seq_len)`.
+        batch_size (int): size of the batch.
 
     """
     src: T_LongTensor
@@ -34,6 +35,10 @@ class Batch:
     insert_mask: T_LongTensor
     delete: T_LongTensor
     delete_mask: T_LongTensor
+    batch_size: int
+
+    def __len__(self):
+        return self.batch_size
 
     @classmethod
     def from_iterator_batch(cls, batch: Any, pad_index: int, sos_index: int, eos_index: int) -> Batch:
@@ -63,7 +68,7 @@ class Batch:
             Batch: a newly created batch input for the model.
 
         """
-        batch_size = batch.src[0].shape[0]
+        batch_size = len(batch)
         src = torch.cat(
             [batch.tgt[0], torch.tensor([[pad_index]] * batch_size, device=batch.src[0].device)], dim=-1)
         src[range(batch_size), batch.src[1]] = eos_index
@@ -82,7 +87,7 @@ class Batch:
         delete = batch.delete[0]
         delete_mask = (delete != pad_index)
 
-        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask)
+        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask, batch_size)
 
     @classmethod
     def from_src_seq_only(cls, src: T_LongTensor, pad_index: int, sos_index: int, eos_index: int) -> Batch:
@@ -105,12 +110,12 @@ class Batch:
         tgt_out = torch.tensor([[eos_index]] * batch_size, device=src.device)
         tgt_mask = (tgt_in != pad_index)
 
-        insert = torch.zeros(1, 1, dtype=torch.long, device=src.device)
+        insert = torch.zeros(batch_size, 1, dtype=torch.long, device=src.device)
         insert_mask = (insert != pad_index)
-        delete = torch.zeros(1, 1, dtype=torch.long, device=src.device)
+        delete = torch.zeros(batch_size, 1, dtype=torch.long, device=src.device)
         delete_mask = (delete != pad_index)
 
-        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask)
+        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask, batch_size)
 
 
 class IteratorWrapper:

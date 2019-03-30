@@ -8,7 +8,7 @@ from torch import LongTensor
 import torch.nn.functional as F
 
 from edit_transformer.model import EditTransformer
-from edit_transformer.iterator import IteratorWrapper, Batch
+from edit_transformer.iterator import Batch
 
 
 @dataclass
@@ -36,10 +36,12 @@ class BeamSearchNode:
         sequence (LongTensor): the sequence of indices corresponding to the node Tensor of shape `(seq_len)`.
         proba (float): the probability corresponding to this sequence.
         alpha (float): regularization parameter (higher alpha favors longer sentences).
+        index (int): reference of the node (absolute position in the batch starting from 0 to batch_size).
 
     """
     sequence: LongTensor
     proba: float
+    index: int
     alpha: float = 0.6
 
     def queue_score(self) -> float:
@@ -72,7 +74,7 @@ class BeamSearchQueue(PriorityQueue):
         finished (bool): weather this queue is finished or not.
 
     """
-    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 500) -> None:
+    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 10000) -> None:
         """ Initialize a BeamSearchQueue.
 
         Args:
@@ -90,11 +92,12 @@ class BeamSearchQueue(PriorityQueue):
         self.finished_nodes = []
         self.finished = False
 
-    def put_nowait(self, item: Tuple[float, LongTensor]) -> None:
+    def put_nowait(self, item: Tuple[int, float, LongTensor]) -> None:
         """Create a new node and put it in the Queue.
 
         Args:
-            item (Tuple[float, LongTensor]): tuple of probability, LongTensor of shape `(seq_len)`.
+            item (Tuple[int, float, LongTensor]): tuple of index in the batch, probability, LongTensor of shape
+                `(seq_len)`.
 
         """
         if not self.finished:
@@ -103,7 +106,7 @@ class BeamSearchQueue(PriorityQueue):
                     self.finished_nodes.append(self.get_nowait().item)
                 self.finished = True
             else:
-                node = BeamSearchNode(sequence=item[1], proba=item[0])
+                node = BeamSearchNode(sequence=item[2], proba=item[1], index=item[0])
                 if node.sequence[-1].item() == self.eos_index or node.sequence.shape[0] == self.max_len:
                     self.finished_nodes.append(node)
                     if len(self.finished_nodes) == self.beam_width:
@@ -129,15 +132,17 @@ class BeamSearchQueueBatch(list):
 
     Attributes:
         pad_index (int): the index used for padding in the sequences.
+        batch_size (int): the batch size wished for evaluation.
 
     """
-    def __init__(self, pad_index: int, queue_batch: Optional[Iterable[BeamSearchQueue]] = None):
+    def __init__(self, pad_index: int, batch_size: int, queue_batch: Optional[Iterable[BeamSearchQueue]] = None):
         """ Initialize the container.
 
         Args:
             pad_index (int): the index used for padding in the sequences.
             queue_batch (Optional[Iterable[BeamSearchQueue]]): an optional iterable of beam search queue to initialize
                 the container with.
+            batch_size (int): the batch size wished for evaluation.
 
         """
         if queue_batch is not None:
@@ -145,6 +150,21 @@ class BeamSearchQueueBatch(list):
         else:
             super().__init__()
         self.pad_index = pad_index
+        self.batch_size = batch_size
+
+    def all_queue_empty(self) -> bool:
+        """Check if all contained queues are empty."""
+        for queue in self:
+            if not queue.empty():
+                return False
+        return True
+
+    def all_queue_finished(self) -> bool:
+        """Check if all queue are finished."""
+        for queue in self:
+            if not queue.finished:
+                return False
+        return True
 
     def get_next_batch_tensor(self) -> Union[Tuple[List[BeamSearchNode], LongTensor], Tuple[None, None]]:
         """ Get next batch tensor to pass through the model.
@@ -155,27 +175,28 @@ class BeamSearchQueueBatch(list):
                 `(batch, max_seq_len)`. It returns a tuple of None if every queue are finished.
 
         """
+        if self.all_queue_finished():
+            return None, None
+
         max_len = 0
-        current_nodes: List[Union[BeamSearchNode, Tuple[None, None]]] = []
-        for queue in self:
-            r = queue.get_nowait()
-            node = r.item if r is not None else None
+        current_nodes: List[BeamSearchNode] = []
 
-            if node is not None:
-                if node.sequence.shape[0] > max_len:
-                    max_len = node.sequence.shape[0]
-
-            current_nodes.append(node)
-
-        if max_len == 0:
-            return None, None  # every queue are finished.
+        print(self[0].qsize())
+        while len(current_nodes) < self.batch_size and not self.all_queue_empty():
+            for queue in self:
+                if not queue.finished and not queue.empty():
+                    node = queue.get_nowait().item
+                    if node.sequence.shape[0] > max_len:
+                        max_len = node.sequence.shape[0]
+                    current_nodes.append(node)
+        print(self[0].qsize())
 
         seq_to_stack = []
         for node in current_nodes:
             if node is not None:
-                len = node.sequence.shape[0]
+                l = node.sequence.shape[0]
                 seq_to_stack.append(
-                    torch.cat((node.sequence, torch.tensor([self.pad_index] * (max_len - len), dtype=torch.long))))
+                    torch.cat((node.sequence, torch.tensor([self.pad_index] * (max_len - l), dtype=torch.long))))
             else:
                 seq_to_stack.append(torch.tensor([self.pad_index] * max_len))
 
@@ -197,8 +218,8 @@ class BeamSearchQueueBatch(list):
         return [queue.finished_nodes for queue in self]
 
 
-def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index: int, topk: int = 5,
-                beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
+def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index: int, batch_size: int = 128,
+                topk: int = 5, beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
                 draw_p: bool = False) -> Tuple[List[List[BeamSearchNode]], List[Reference]]:
     """ Perform a beam_search on the provided data using the provided model.
 
@@ -206,7 +227,8 @@ def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index:
         model (EditTransformer): the model to use to perform the beam_search.
         batch (Batch): one `Batch` of inputs to the model.
         eos_index (int): index used to mark an end of sentence.
-        pad_index (int): index used to padd the sequences too short.
+        pad_index (int): index used to pad the sequences too short.
+        batch_size (int): the desired batch size to achieve when performing the beam search.
         topk (int): the number of best results to keep at each time-step.
         beam_width (int): the number of results to search for and output per sample.
         max_len (int): the maximum length of a sequence.
@@ -219,7 +241,7 @@ def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index:
 
     """
 
-    queue_batch = BeamSearchQueueBatch(pad_index)
+    queue_batch = BeamSearchQueueBatch(pad_index, batch_size)
     tgt_in = batch.tgt_in[:, 0].unsqueeze(-1)
     tgt_mask = tgt_in != pad_index
     logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
@@ -231,35 +253,32 @@ def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index:
     for index in range(topk_indices.shape[0]):
         queue = BeamSearchQueue(eos_index, beam_width, max_len)
         for k in range(topk):
-            queue.put_nowait((topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
+            queue.put_nowait((index, topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
         queue_batch.append(queue)
 
     current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
     while current_nodes is not None:
+        sub = [n.index for n in current_nodes]
         tgt_in = batch_tensor.to(batch.src.device)
         tgt_mask = tgt_in != pad_index
 
-        logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
-                       batch.delete_mask, draw_samples, draw_p)
+        logits = model(batch.src[sub], batch.src_mask[sub], tgt_in, tgt_mask, batch.insert[sub], batch.insert_mask[sub],
+                       batch.delete[sub], batch.delete_mask[sub], draw_samples, draw_p)
         logits[:, :, pad_index] = - float('inf')  # -> leads to a true 0 probability in the softmax for the padding.
         proba = F.softmax(logits, dim=-1)
 
         seq_indices = []
         for node in current_nodes:
-            if node is not None:
-                    seq_indices.append(node.sequence.shape[0] - 1)
-            else:
-                seq_indices.append(-1)
+            seq_indices.append(node.sequence.shape[0] - 1)
 
         topk_indices = torch.topk(proba, topk)[1][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
         topk_proba = torch.topk(proba, topk)[0][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
 
         for index in range(topk_indices.shape[0]):
             n = current_nodes[index]
-            if n is not None:
-                for k in range(topk):
-                    queue_batch[index].put_nowait((n.proba * topk_proba[index][k].item(), torch.cat(
-                        (n.sequence, topk_indices[index][k].long().unsqueeze(-1).cpu()))))
+            for k in range(topk):
+                queue_batch[n.index].put_nowait((n.index, n.proba * topk_proba[index][k].item(), torch.cat(
+                    (n.sequence, topk_indices[index][k].long().unsqueeze(-1).cpu()))))
 
         current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
 
