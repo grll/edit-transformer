@@ -137,7 +137,7 @@ def compute_bleu(model: EditTransformer, iterator: IteratorWrapper, limit: int, 
     for batch in iterator:
         if iterator.iterator.iterations > limit:
             break
-        n, r = beam_search(model, batch, vocab.stoi["<eos>"], vocab.stoi["<pad>"], draw_samples=True, draw_p=False)
+        n, r = beam_search(model, batch, vocab.stoi["<eos>"], vocab.stoi["<pad>"], draw_samples=False, draw_p=False)
         nodes_list.extend(n)
         references.extend(r)
 
