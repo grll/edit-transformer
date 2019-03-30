@@ -181,7 +181,6 @@ class BeamSearchQueueBatch(list):
         max_len = 0
         current_nodes: List[BeamSearchNode] = []
 
-        print(self[0].qsize())
         while len(current_nodes) < self.batch_size and not self.all_queue_empty():
             for queue in self:
                 if not queue.finished and not queue.empty():
@@ -189,7 +188,6 @@ class BeamSearchQueueBatch(list):
                     if node.sequence.shape[0] > max_len:
                         max_len = node.sequence.shape[0]
                     current_nodes.append(node)
-        print(self[0].qsize())
 
         seq_to_stack = []
         for node in current_nodes:
