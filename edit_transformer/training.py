@@ -151,7 +151,7 @@ if __name__ == "__main__":
     ex_writer_ = ExamplesWriter(join(directory_path_, "examples.txt"))
 
     # 2. config
-    config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "edit_transformer.txt"))
+    config_ = Config.from_file(join(data.code_workspace.configs, "edit_transformer", "training.txt"))
     config_.to_file(join(directory_path_, "config.txt"))
     logger_.info("Config:\n{}".format(config_.to_str()))
 
