@@ -1,9 +1,10 @@
-from typing import Collection, Union, Tuple
+from __future__ import annotations
+from typing import Collection, Union, Tuple, Any
 from dataclasses import dataclass
-from itertools import zip_longest
 
 import torch
-from torch import Tensor
+
+from dependencies.typing import T_LongTensor
 from dependencies.text.torchtext.data.iterator import BucketIterator
 from dependencies.text.torchtext.data.dataset import TabularDataset
 
@@ -24,30 +25,98 @@ class Batch:
         delete_mask (Tensor): mask over tensor of deleted words of shape `(batch_size, delete_seq_len)`.
 
     """
-    src: Tensor
-    src_mask: Tensor
-    tgt_in: Tensor
-    tgt_out: Tensor
-    tgt_mask: Tensor
-    insert: Tensor
-    insert_mask: Tensor
-    delete: Tensor
-    delete_mask: Tensor
+    src: T_LongTensor
+    src_mask: T_LongTensor
+    tgt_in: T_LongTensor
+    tgt_out: T_LongTensor
+    tgt_mask: T_LongTensor
+    insert: T_LongTensor
+    insert_mask: T_LongTensor
+    delete: T_LongTensor
+    delete_mask: T_LongTensor
+
+    @classmethod
+    def from_iterator_batch(cls, batch: Any, pad_index: int, sos_index: int, eos_index: int) -> Batch:
+        """Create a batch from an iterator batch.
+
+        Args:
+            batch (Any): a batch from iterator to wrap into `Batch` with the following attributes:
+                {
+                    'src (Tuple[T_LongTensor, T_LongTensor])': tuple of tensors containing the source sentence
+                        numericalized and padded of shape `(batch_size, seq_len)` and the length of each sentence of
+                        shape `(batch_size)`.
+                    'tgt (Tuple[T_LongTensor, T_LongTensor])': tuple of tensors containing the target sentence
+                        numericalized and padded of shape `(batch_size, seq_len)` and the length of each sentence of
+                        shape `(batch_size)`.
+                    'insert (Tuple[T_LongTensor, T_LongTensor])': tuple of tensors containing the inserted word
+                        numericalized and padded of shape `(batch_size, seq_len)` and the length of each sequence of
+                        words of shape `(batch_size)`.
+                    'delete (Tuple[T_LongTensor, T_LongTensor])': tuple of tensors containing the deleted word
+                        numericalized and padded of shape `(batch_size, seq_len)` and the length of each sequence of
+                        words of shape `(batch_size)`.
+                }
+            pad_index (int): index of the pad token used.
+            sos_index (int): index of the start of sentence token used.
+            eos_index (int): index of the end of sentence token used.
+
+        Returns:
+            Batch: a newly created batch input for the model.
+
+        """
+        src = batch.src[0]
+        src_mask = (src != pad_index)
+
+        batch_size = batch.tgt[0].shape[0]
+        tgt_in = torch.cat(
+            [torch.tensor([[sos_index]] * batch_size, device=batch.tgt[0].device), batch.tgt[0]], dim=-1)
+        tgt_out = torch.cat(
+            [batch.tgt[0], torch.tensor([[pad_index]] * batch_size, device=batch.tgt[0].device)], dim=-1)
+        tgt_out[range(batch_size), batch.tgt[1]] = eos_index
+        tgt_mask = (tgt_in != pad_index)
+
+        insert = batch.insert[0]
+        insert_mask = (insert != pad_index)
+        delete = batch.delete[0]
+        delete_mask = (delete != pad_index)
+
+        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask)
+
+    @classmethod
+    def from_src_seq_only(cls, src: T_LongTensor, pad_index: int, sos_index: int, eos_index: int) -> Batch:
+        """Create a batch from a source sequences only.
+
+        Args:
+            src (T_LongTensor): the source sequences on which the batch will be created of shape `(batch_size, seq_len)`
+            pad_index (int): index of the pad token used.
+            sos_index (int): index of the start of sentence token used.
+            eos_index (int): index of the end of sentence token used.
+
+        Returns:
+            Batch: a newly created batch input for the model.
+
+        """
+        src_mask = (src != pad_index)
+
+        batch_size = src.shape[0]
+        tgt_in = torch.tensor([[sos_index]] * batch_size, device=src.device)
+        tgt_out = torch.tensor([[eos_index]] * batch_size, device=src.device)
+        tgt_mask = (tgt_in != pad_index)
+
+        insert = torch.zeros(1, 1, dtype=torch.long, device=src.device)
+        insert_mask = (insert != pad_index)
+        delete = torch.zeros(1, 1, dtype=torch.long, device=src.device)
+        delete_mask = (delete != pad_index)
+
+        return cls(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask)
 
 
 class IteratorWrapper:
     """Wrapper class around BucketIterator to yield custom batches."""
-    def __init__(self, iterator: BucketIterator, pad_index: int, sos_index: int, eos_index: int):
+    def __init__(self, iterator: BucketIterator, pad_index: int, sos_index: int, eos_index: int) -> None:
         """Initialize the Iterator Wrapper with the original iterator.
 
         Args:
-            iterator (BucketIterator): Iterator to wrap which yields batches with the following attributes:
-                {
-                    'src (Tuple[Tensor, Tensor])':
-                    'tgt (Tuple[Tensor, Tensor])':
-                    'insert (Tuple[Tensor, Tensor])':
-                    'delete (Tuple[Tensor, Tensor])':
-                }
+            iterator (BucketIterator): Iterator to wrap which yields batches object.
             pad_index (int): index of the pad token used.
             sos_index (int): index of the start of sentence token used.
             eos_index (int): index of the end of sentence token used.
@@ -66,23 +135,7 @@ class IteratorWrapper:
 
         """
         for batch in self.iterator:
-            src = batch.src[0]
-            src_mask = (src != self.pad_index)
-
-            batch_size = batch.tgt[0].shape[0]
-            tgt_in = torch.cat(
-                [torch.tensor([[self.sos_index]] * batch_size, device=self.iterator.device), batch.tgt[0]], dim=-1)
-            tgt_out = torch.cat(
-                [batch.tgt[0], torch.tensor([[self.pad_index]] * batch_size, device=self.iterator.device)], dim=-1)
-            tgt_out[range(batch_size), batch.tgt[1]] = self.eos_index
-            tgt_mask = (tgt_in != self.pad_index)
-
-            insert = batch.insert[0]
-            insert_mask = (insert != self.pad_index)
-            delete = batch.delete[0]
-            delete_mask = (delete != self.pad_index)
-
-            yield Batch(src, src_mask, tgt_in, tgt_out, tgt_mask, insert, insert_mask, delete, delete_mask)
+            yield Batch.from_iterator_batch(batch, self.pad_index, self.sos_index, self.eos_index)
 
     def __len__(self):
         """Return the same length as the original iterator."""

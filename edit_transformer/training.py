@@ -77,6 +77,7 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
                       specials=['<pad>', '<sos>', '<eos>'],
                       vectors=config.vocab.vector_name,
                       vectors_cache="/data/.vector_cache")
+    torch.save(field.vocab, join(directory_path, "vocab.pth.tar"))
     logger.info("Done.")
 
     logger.info("Create Iterators...")
@@ -126,7 +127,6 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
 
         if iteration % config.training.save_checkpoint_iter == 0:
             obj_to_save = {'step': iteration,
-                           'emb_state_dict': embedding.state_dict(),
                            'model_state_dict': edit_transformer.state_dict(),
                            'optimizer_state_dict': optimizer.state_dict()}
             torch.save(obj_to_save, join(directory_path, "checkpoint_{}.pth.tar".format(iteration)))

@@ -8,7 +8,7 @@ from torch import LongTensor
 import torch.nn.functional as F
 
 from edit_transformer.model import EditTransformer
-from edit_transformer.iterator import IteratorWrapper
+from edit_transformer.iterator import IteratorWrapper, Batch
 
 
 @dataclass
@@ -197,15 +197,14 @@ class BeamSearchQueueBatch(list):
         return [queue.finished_nodes for queue in self]
 
 
-def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, eos_index: int, pad_index: int,
-                topk: int = 5, beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
+def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index: int, topk: int = 5,
+                beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
                 draw_p: bool = False) -> Tuple[List[List[BeamSearchNode]], List[Reference]]:
     """ Perform a beam_search on the provided data using the provided model.
 
     Args:
         model (EditTransformer): the model to use to perform the beam_search.
-        iterator (IteratorWrapper): an iterator that generates `Batch` of inputs to the model.
-        limit (int): batch limit number to take in the iterator.
+        batch (Batch): one `Batch` of inputs to the model.
         eos_index (int): index used to mark an end of sentence.
         pad_index (int): index used to padd the sequences too short.
         topk (int): the number of best results to keep at each time-step.
@@ -215,69 +214,66 @@ def beam_search(model: EditTransformer, iterator: IteratorWrapper, limit: int, e
         draw_p (bool): Edit vector drawn from random prior distribution (keep False for training).
 
     Returns:
-        List[List[BeamSearchNode]]: a list of list of BeamSearchNode of shape `(num_samples, beam_width)`.
+        Tuple[List[BeamSearchNode], List[Reference]]: a list of of list BeamSearchNode of len `(num_sample, beam_width)`
+            and a list of corresponding reference data.
 
     """
-    references = []
-    output_nodes = []
-    for batch in iterator:
-        if iterator.iterator.iterations > limit:
-            break
-        queue_batch = BeamSearchQueueBatch(pad_index)
-        tgt_in = batch.tgt_in[:, 0].unsqueeze(-1)
+
+    queue_batch = BeamSearchQueueBatch(pad_index)
+    tgt_in = batch.tgt_in[:, 0].unsqueeze(-1)
+    tgt_mask = tgt_in != pad_index
+    logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
+                   batch.delete_mask, draw_samples, draw_p)
+    proba = F.softmax(logits, dim=-1)
+    topk_indices = torch.topk(proba, topk)[1][:, -1, :]  # shape `(batch, topk)`
+    topk_proba = torch.topk(proba, topk)[0][:, -1, :]  # shape `(batch, topk)`
+
+    for index in range(topk_indices.shape[0]):
+        queue = BeamSearchQueue(eos_index, beam_width, max_len)
+        for k in range(topk):
+            queue.put_nowait((topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
+        queue_batch.append(queue)
+
+    current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
+    while current_nodes is not None:
+        tgt_in = batch_tensor.to(batch.src.device)
         tgt_mask = tgt_in != pad_index
+
         logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
                        batch.delete_mask, draw_samples, draw_p)
+        logits[:, :, pad_index] = - float('inf')  # -> leads to a true 0 probability in the softmax for the padding.
         proba = F.softmax(logits, dim=-1)
-        topk_indices = torch.topk(proba, topk)[1][:, -1, :]  # shape `(batch, topk)`
-        topk_proba = torch.topk(proba, topk)[0][:, -1, :]  # shape `(batch, topk)`
+
+        seq_indices = []
+        for node in current_nodes:
+            if node is not None:
+                    seq_indices.append(node.sequence.shape[0] - 1)
+            else:
+                seq_indices.append(-1)
+
+        topk_indices = torch.topk(proba, topk)[1][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
+        topk_proba = torch.topk(proba, topk)[0][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
 
         for index in range(topk_indices.shape[0]):
-            queue = BeamSearchQueue(eos_index, beam_width, max_len)
-            for k in range(topk):
-                queue.put_nowait((topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
-            queue_batch.append(queue)
+            n = current_nodes[index]
+            if n is not None:
+                for k in range(topk):
+                    queue_batch[index].put_nowait((n.proba * topk_proba[index][k].item(), torch.cat(
+                        (n.sequence, topk_indices[index][k].long().unsqueeze(-1).cpu()))))
 
         current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
-        while current_nodes is not None:
-            tgt_in = batch_tensor.to(iterator.iterator.device)
-            tgt_mask = tgt_in != pad_index
 
-            logits = model(batch.src, batch.src_mask, tgt_in, tgt_mask, batch.insert, batch.insert_mask, batch.delete,
-                           batch.delete_mask, draw_samples, draw_p)
-            logits[:, :, pad_index] = - float('inf')  # -> leads to a true 0 probability in the softmax for the padding.
-            proba = F.softmax(logits, dim=-1)
+    references = []
+    for i in range(batch.tgt_out.shape[0]):
+        tgt_out = batch.tgt_out[i]
+        tgt_out = tgt_out[tgt_out != pad_index].cpu()
+        src = batch.src[i]
+        src = src[src != pad_index].cpu()
+        insert = batch.insert[i]
+        insert = insert[insert != pad_index].cpu()
+        delete = batch.delete[i]
+        delete = delete[delete != pad_index].cpu()
+        references.append(Reference(src_sequence=src, tgt_out_sequence=tgt_out, insert_sequence=insert,
+                                    delete_sequence=delete))
 
-            seq_indices = []
-            for node in current_nodes:
-                if node is not None:
-                        seq_indices.append(node.sequence.shape[0] - 1)
-                else:
-                    seq_indices.append(-1)
-
-            topk_indices = torch.topk(proba, topk)[1][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
-            topk_proba = torch.topk(proba, topk)[0][range(len(seq_indices)), seq_indices, :]  # shape `(batch, topk)`
-
-            for index in range(topk_indices.shape[0]):
-                n = current_nodes[index]
-                if n is not None:
-                    for k in range(topk):
-                        queue_batch[index].put_nowait((n.proba * topk_proba[index][k].item(), torch.cat(
-                            (n.sequence, topk_indices[index][k].long().unsqueeze(-1).cpu()))))
-
-            current_nodes, batch_tensor = queue_batch.get_next_batch_tensor()
-
-        output_nodes.extend(queue_batch.get_final_nodes())
-        for i in range(batch.tgt_out.shape[0]):
-            tgt_out = batch.tgt_out[i]
-            tgt_out = tgt_out[tgt_out != pad_index].cpu()
-            src = batch.src[i]
-            src = src[src != pad_index].cpu()
-            insert = batch.insert[i]
-            insert = insert[insert != pad_index].cpu()
-            delete = batch.delete[i]
-            delete = delete[delete != pad_index].cpu()
-            references.append(Reference(src_sequence=src, tgt_out_sequence=tgt_out, insert_sequence=insert,
-                                        delete_sequence=delete))
-
-    return output_nodes, references
+    return queue_batch.get_final_nodes(), references
