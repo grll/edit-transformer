@@ -1,0 +1,3 @@
+[submodule "dependencies/text"]
+	path = dependencies/text
+	url = https://github.com/grll/text.git
