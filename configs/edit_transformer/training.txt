@@ -1,7 +1,7 @@
 dataset {
-    train_path = "/data/datasets/yelp/train_preprocessed_free_set_True.tsv"
-    test_path = "/data/datasets/yelp/test_preprocessed_free_set_True.tsv"
-    valid_path = "/data/datasets/yelp/valid_preprocessed_free_set_True.tsv"
+    train_path = "/data/datasets/yelp/train_preprocessed_free_set_False.tsv"
+    test_path = "/data/datasets/yelp/test_preprocessed_free_set_False.tsv"
+    valid_path = "/data/datasets/yelp/valid_preprocessed_free_set_False.tsv"
 }
 
 vocab {
