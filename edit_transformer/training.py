@@ -8,12 +8,14 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from dependencies.text.torchtext.data.field import Field
 from dependencies.text.torchtext.data.dataset import TabularDataset
+from dependencies.text.torchtext.vocab import pretrained_aliases
 from tensorboardX import SummaryWriter
 
 from dependencies import data
 from dependencies.config import Config
 from dependencies.logger import setup_logging
 from dependencies.workspace import IntegerDirectories
+from dependencies.spacy_entities import en_core_web_lg
 from edit_transformer.model import make_model
 from edit_transformer.iterator import create_iterators
 from edit_transformer.evaluation import evaluate_model, ExamplesWriter
@@ -74,9 +76,25 @@ def main(config: Config, logger: Logger, tb_writter: SummaryWriter, ex_writer: E
     logger.info("Building Vocab...")
     field.build_vocab(train_dataset,
                       max_size=config.vocab.max_size,
-                      specials=['<pad>', '<sos>', '<eos>'],
+                      specials=['<pad>', '<sos>', '<eos>'] + list(en_core_web_lg.keys()),
                       vectors=config.vocab.vector_name,
                       vectors_cache="/data/.vector_cache")
+
+    # fix vocab vectors
+    vectors = pretrained_aliases[config.vocab.vector_name](cache="/data/.vector_cache")
+    for token, list_repr in en_core_web_lg.items():
+        mean_indices = []
+        for repr in list_repr:
+            if repr.lower() in vectors.stoi:
+                mean_indices.append(vectors.stoi[repr.lower()])
+        field.vocab.vectors[field.vocab.stoi[token]] = vectors.vectors[mean_indices].mean(dim=0)
+    del vectors
+
+    zero_mask = (field.vocab.vectors.sum(dim=-1) == 0)
+    zero_mask[[field.vocab.stoi["<pad>"], field.vocab.stoi["<sos>"], field.vocab.stoi["<eos>"]]] = 0
+    non_zero_mask = (field.vocab.vectors.sum(dim=-1) != 0)
+    field.vocab.vectors[zero_mask] = field.vocab.vectors[non_zero_mask].mean(dim=0)
+
     torch.save(field.vocab, join(directory_path, "vocab.pth.tar"))
     logger.info("Done.")
 

@@ -74,7 +74,7 @@ class BeamSearchQueue(PriorityQueue):
         finished (bool): weather this queue is finished or not.
 
     """
-    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 5000) -> None:
+    def __init__(self, eos_index: int, beam_width: int, max_len: int, q_limit: int = 500) -> None:
         """ Initialize a BeamSearchQueue.
 
         Args:
