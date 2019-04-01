@@ -1,5 +1,5 @@
 model {
-    vocab_path = "/data/training_runs/11/vocab.pth.tar"
-    checkpoint_path = "/data/training_runs/11/checkpoint_200000.pth.tar"
-    config_path = "/data/training_runs/11/config.txt"
+    vocab_path = "/data/training_runs/17/vocab.pth.tar"
+    checkpoint_path = "/data/training_runs/17/checkpoint_100000.pth.tar"
+    config_path = "/data/training_runs/17/config.txt"
 }
