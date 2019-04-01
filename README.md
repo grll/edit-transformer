@@ -116,6 +116,6 @@ A generated output will look like the following:
 
 ![Generation Output](/images/output.png)
 
-where each generated sample correspond to one row and the first numbered column corresponds to the probability output of
- the model for the generated sequence and the second numbered column is the corresponding normalized score used in the 
-beam search.
+where each generated sample corresponds to a single row and the first numbered column corresponds to the probability 
+output of the model for the generated sequence and the second numbered column is the corresponding normalized score used
+ in the beam search.
