@@ -217,7 +217,7 @@ class BeamSearchQueueBatch(list):
 
 
 def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index: int, batch_size: int = 128,
-                topk: int = 5, beam_width: int = 5, max_len: int = 50, draw_samples: bool = True,
+                topk: int = 5, beam_width: int = 5, max_len: int = 50, q_limit: int = 500, draw_samples: bool = True,
                 draw_p: bool = False) -> Tuple[List[List[BeamSearchNode]], List[Reference]]:
     """ Perform a beam_search on the provided data using the provided model.
 
@@ -230,6 +230,7 @@ def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index:
         topk (int): the number of best results to keep at each time-step.
         beam_width (int): the number of results to search for and output per sample.
         max_len (int): the maximum length of a sequence.
+        q_limit (int): the maximum node in each queue (limit the computation).
         draw_samples (bool): Weather to draw samples VAE style or not (keep True for training).
         draw_p (bool): Edit vector drawn from random prior distribution (keep False for training).
 
@@ -249,7 +250,7 @@ def beam_search(model: EditTransformer, batch: Batch, eos_index: int, pad_index:
     topk_proba = torch.topk(proba, topk)[0][:, -1, :]  # shape `(batch, topk)`
 
     for index in range(topk_indices.shape[0]):
-        queue = BeamSearchQueue(eos_index, beam_width, max_len)
+        queue = BeamSearchQueue(eos_index, beam_width, max_len, q_limit=q_limit)
         for k in range(topk):
             queue.put_nowait((index, topk_proba[index][k].item(), topk_indices[index][k].long().unsqueeze(-1).cpu()))
         queue_batch.append(queue)

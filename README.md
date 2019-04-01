@@ -91,9 +91,31 @@ this file before running the following command:
 docker run -d --rm -v $(pwd):/code -v $(pwd)/../data:/data -e CUDA_VISIBLE_DEVICES=0 edit-transformer:0.0.2 python3.7 -u edit_transformer/training.py
 ```
 
-> This script generates a new folder for each run with a number in `/data/training_runs`. In this spefic folder you will
-find the logs of the training run, its config, some output examples from the training and the tensorboard log events.
+> This script generates a new folder for each run with a number in `/data/training_runs`. In this specific folder you 
+will find the logs of the training run, its config, some output examples from the training and the tensorboard log 
+events.
 
 ### Generation
 
-TODO
+In order to use the model in generation mode, the configuration of a finished training run must be appropriately 
+provided through the config file in `configs/edit_transformer/generation.txt`. In particular, all the `model` config
+key must be set appropriately in order for the generation script to find the output of your training run.
+
+Once this is done an example generation script allows you to input a sentence and returns you 5 generated samples from
+the model. In order to run this script you can run the following command:
+
+```bash
+docker run -it --rm -v $(pwd):/code -v $(pwd)/../data:/data -e INTERACTIVE_ENVIRONMENT=True edit-transformer:0.0.2 python3.7 edit_transformer/generation.py
+```
+
+> Note that you can tune the time taken by the script to perform the beam search by reducing either q_limit the maximum
+node of beam search per sample or attempts the number of beam search to run with different edit vector sampled in the 
+script config previously mentioned.
+
+A generated output will look like the following:
+
+![Generation Output](/images/output.png)
+
+where each generated sample correspond to one row and the first numbered column corresponds to the probability output of
+ the model for the generated sequence and the second numbered column is the corresponding normalized score used in the 
+beam search.
